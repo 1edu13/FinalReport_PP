@@ -56,10 +56,33 @@ Where $\hat{A}_{t}$ is the advantage estimate and $\epsilon$ is a hyperparameter
 
 This section defines the “Rules of the Game” and how the agent perceives and interacts with the world.
 
-### 3.1 Environment Definition
+### 3.1 Environment Definition, Dynamics and Physics Modeling
+It is crucial to understand that `CarRacing-v2` is not merely a video playback, but a rigid-body physics simulation powered by the **Box2D** engine. This engine handles the integration of forces, momentum, friction, and collisions, which directly dictates the complexity of the control task.
+
 * **Environment ID:** `CarRacing-v2` (Gymnasium).
 * **Type:** Continuous Control from visual inputs.
 * **Rendering:** The environment renders a top-down view of the car and track.
+
+#### 3.1.1 The Vehicle Model
+The car is modeled as a compound object governed by Newtonian mechanics. Specifically:
+* **Rigid Body Dynamics:** The car consists of a chassis (a rectangular polygon with mass and inertia) connected to four wheels via joints.
+* **Rear-Wheel Drive:** The "Gas" action applies torque specifically to the rear wheels, generating propulsion.
+* **Inertia and Momentum:** Unlike simple grid-world games, the agent does not control the vehicle's position or velocity directly. Instead, it applies **forces**. This means the car has momentum; it cannot stop instantly and will skid if the steering angle is too sharp at high speeds. The agent must learn to account for braking distances and drift dynamics.
+
+#### 3.1.2 The Track and Surface Properties
+To prevent the agent from simply memorizing a sequence of turns (overfitting), the track is **procedurally generated** at the start of each episode using randomized control points connected by Splines (Bézier curves).
+
+Crucially, the physics engine simulates different surface properties:
+* **Road (Poly1):** modelel with a high friction coefficient. This allows the tires to grip, enabling acceleration and turning.
+* **Grass (Background):** Modeled with very low friction.
+* **The "Tiles":** Although the rendering looks continuous, logically the track is divided into discrete "tiles" or checkpoints. These are invisible to the camera but are used by the environment to calculate the progress reward.
+
+#### 3.1.3 Interaction and "Off-Track" Detection Logic
+One of the most critical aspects of the environment is how it decides when the car has failed. This is handled via **Box2D Contact Listeners** (sensors):
+
+1.  **Wheel Sensors:** The simulation continuously checks what material is essentially "under" each of the four wheels.
+2.  **Friction Dynamics:** If a wheel touches the road, it has grip. If it touches the grass, it loses traction, making the car hard to control.
+3.  **The Failure Condition:** The environment flags the car as "outside the track" when **all four wheels** lose contact with the road tiles simultaneously. In our implementation, we use this signal to trigger a harsh penalty and terminate the episode, teaching the agent that staying on the asphalt is the primary constraint.
 
 ### 3.2 Observation Space (State Representation)
 The raw environment provides a $96 \times 96 \times 3$ RGB image. To enable the agent to perceive motion and reduce computational complexity, we implemented a custom wrapper pipeline:
