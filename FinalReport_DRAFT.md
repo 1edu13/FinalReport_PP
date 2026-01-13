@@ -20,7 +20,7 @@
 ---
 
 ## 1. Introduction
-The objective of this project is to develop an autonomous agent capable of navigating a race track effectively. Using **Reinforcement Learning (RL)**, specifically the **Proximal Policy Optimization (PPO)** algorithm, the agent learns to control a vehicle in the `CarRacing-v3` environment.
+The objective of this project is to develop an autonomous agent capable of navigating a race track effectively. Using **Reinforcement Learning (RL)**, specifically the **Proximal Policy Optimization (PPO)** algorithm, the agent learns to control a vehicle in the `CarRacing-v2` environment.
 
 Unlike rule-based systems, the agent learns purely from visual inputs (pixels) and trial-and-error interactions, aiming to maximize a reward signal based on speed and track completion. This implementation is built from scratch using **PyTorch** and **NumPy**, avoiding high-level abstractions like Stable Baselines3 to demonstrate a deep understanding of the underlying algorithms.
 
@@ -28,28 +28,53 @@ Unlike rule-based systems, the agent learns purely from visual inputs (pixels) a
 
 ## 2. Short Theory Explanation
 
-### 2.1 Reinforcement Learning Framework
-The problem is modeled as a Markov Decision Process (MDP) where an **Agent** interacts with an **Environment**:
+### 2.1 The Reinforcement Learning Problem
+At its core, Reinforcement Learning (RL) involves an agent learning to make decisions by interacting with an environment to achieve a goal. We model this as a Markov Decision Process (MDP):
 
-- **State ($s_{t}$):** The current view of the world (images of the track).
-- **Action ($a_{t}$):** The control inputs applied to the car (steering, gas, brake).
+- **State ($s_{t}$):** The agent's current observation of the world (in our case, the stacked grayscale images of the track).
+- **Action ($a_{t}$):** The decision made by the agent (steering, gas, brake).
 - **Reward ($r_{t}$):** A scalar feedback signal indicating the immediate success of the action.
 
-### 2.2 Proximal Policy Optimization (PPO)
-We utilize PPO, an **on-policy** gradient method that strikes a balance between ease of tuning, sample complexity, and performance.
+The agent's objective is not just to maximize the immediate reward, but to maximize the **cumulative reward** (return) over time.
 
-- **Actor-Critic Architecture:** The model consists of two networks (or two heads sharing a backbone):
-  - **Actor:** Outputs the probability distribution of actions given a state (Policy $\pi_\theta$).
-  - **Critic:** Estimates the value of a state ($V(s)$) to guide the training stability.
-- **The Clipped Surrogate Objective:** PPO prevents drastic updates to the policy that could destabilize training. It limits the change in the policy ratio $r_{t}(\theta)$ using a clipping mechanism:
+### 2.2 The Essence of Policy Gradient and Its Challenges
+To solve this MDP, we use **Policy Gradient methods**. These methods directly optimize the policy $\pi_\theta$ (the neural network) to maximize the expected return. They work by adjusting the network parameters $\theta$ in the direction that increases the probability of taking actions that lead to high rewards.
 
+**The Challenge:** Traditional policy gradient methods (like REINFORCE) can be highly unstable.
+* If the learning step size is too small, training is agonizingly slow.
+* If the step size is too large, a single "bad" update can ruin the policy, causing performance to collapse. Once the policy degrades, the agent collects poor data, and it may never recover.
+
+### 2.3 Proximal Policy Optimization (PPO) Explained
+We utilize **PPO (Proximal Policy Optimization)**, an algorithm designed to strike a balance between sample efficiency and stability. As described in the literature, PPO acts as a successor to earlier methods by putting "guardrails" on the learning process.
+
+#### 2.3.1 The Actor-Critic Architecture
+Our implementation uses two distinct networks (or heads):
+1.  **The Actor ($\pi_\theta$):** Decides which action to take. It outputs the distribution parameters (Mean and Standard Deviation) for steering, gas, and brake.
+2.  **The Critic ($V_\phi$):** Estimates the value of the current state. This is crucial for computing the **Advantage**.
+
+#### 2.3.2 The Advantage Function
+PPO relies on the Advantage Function, $\hat{A}_t$, to guide updates. Instead of looking at raw rewards, the Advantage asks:
+*> "How much better was this specific action compared to the average action the agent usually takes in this state?"*
+
+$$\hat{A}_t = Q(s,a) - V(s)$$
+
+This helps the algorithm focus specifically on actions that yield *unexpectedly* good results, reducing variance in training.
+
+#### 2.3.3 The Clipped Surrogate Objective (The "Guardrails")
+The key innovation of PPO is how it updates the policy. It limits how much the policy can change in a single update using a **clipping mechanism**.
+
+Let $r_t(\theta)$ be the probability ratio between the new policy and the old policy: $r_t(\theta) = \frac{\pi_{\theta}(a_t|s_t)}{\pi_{\theta_{old}}(a_t|s_t)}$.
+
+The PPO objective function is:
 
 $$
 L^{CLIP}(\theta) = \hat{\mathbb{E}}_t \left[ \min \left( r_t(\theta)\hat{A}_t, \ \text{clip}\left( r_t(\theta), 1-\epsilon, 1+\epsilon \right)\hat{A}_t \right) \right]
 $$
 
-Where $\hat{A}_{t}$ is the advantage estimate and $\epsilon$ is a hyperparameter (usually 0.2).
-
+**Intuition:**
+* If the advantage $\hat{A}_t$ is positive, we want to increase the probability of the action ($r_t > 1$).
+* However, if $r_t$ grows beyond $1+\epsilon$ (usually 1.2), the clipping term kicks in.
+* This effectively stops the update from being too drastic. It ensures the new policy stays **proximal** (close) to the old one, preventing the catastrophic forgetting common in standard RL.
 ---
 
 ## 3. Specification of Demonstrator Setting
@@ -95,13 +120,9 @@ The raw environment provides a $96 \times 96 \times 3$ RGB image. To enable the 
 **Final State Shape:** Tensor of shape `(Batch_Size, 4, 96, 96)`.![Example of how the environment looks like](enviroment.png)  
 *Figure 1: Visual example of the `CarRacing-v2` (Gymnasium) environment.*
 
-To reduce computational load and provide temporal context (speed/direction), the following preprocessing pipeline is applied:
 
-1. **Grayscale Conversion:** The RGB image is converted to a single channel, reducing input depth.
-2. **Frame Stacking:** We stack **4 consecutive frames** to allow the network to perceive motion (velocity and acceleration). A single static image is insufficient to infer speed.
-3. **Normalization:** Pixel values are normalized from \([0, 255]\) to \([0.0, 1.0]\).
 
-**Final state shape:** tensor of shape \((4, 96, 96)\) (Channels, Height, Width).
+**Final state shape:** tensor of shape ((4, 96, 96)\) (Channels, Height, Width).
 
 ### 3.3 Action Space (Action Representation)
 Unlike discrete environments (e.g., "Press Left" or "Press Right"), driving requires smooth, continuous adjustments. The agent operates in a continuous action space controlling three actuators. The Policy Network outputs a **Gaussian distribution** (mean and learnable standard deviation) for each action, from which values are sampled.
@@ -134,7 +155,7 @@ Where:
 * **Time Penalty ($r_{time}$):** A constant penalty of $-0.1$ is applied at every time step. This forces the agent to drive fast; if it drives too slowly, the accumulated negative time penalty will outweigh the progress reward.
 * **Safety Penalty ($r_{penalty}$):** If the car moves completely off the field of play (all wheels on grass), the episode terminates immediately with a penalty of $-100$.
 
-**Success Criterion:** The agent is considered to have "solved" the environment if it consistently achieves a score **> 900 points**, implying it completed the track reasonably fast with minimal errors.
+* **Success Criterion:** The agent is considered to have "solved" the environment if it consistently achieves a score **> 900 points**, implying it completed the track reasonably fast with minimal errors.
 ---
 
 ## 4. Methods and Implementation Strategy
