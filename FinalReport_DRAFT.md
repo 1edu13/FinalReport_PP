@@ -50,7 +50,8 @@ We utilize **PPO (Proximal Policy Optimization)**, an algorithm designed to stri
 #### 2.3.1 The Actor-Critic Architecture
 Our implementation uses two distinct networks (or heads):
 1.  **The Actor ($\pi_\theta$):** Decides which action to take. It outputs the distribution parameters (Mean and Standard Deviation) for steering, gas, and brake.
-2.  **The Critic ($V_\phi$):** Estimates the value of the current state. This is crucial for computing the **Advantage**.
+2.  **The Critic ($V_\phi$):** Estimates the value of the current state. This is crucial for computing the **Advantage**. This value acts as a **baseline** that is subtracted from the empirical return ($R_t$) to calculate the **Advantage** ($A_t = R_t - V(s)$).
+  Theoretically, using this baseline reduces the **variance** of the policy gradient estimates without introducing bias. This relates to the definition of variance, $\text{Var}(X) = \mathbb{E}[(X - \mathbb{E}[X])^2]$; by minimizing the Mean Squared Error (MSE) between the predicted value and the actual return, the Critic effectively "centers" the learning signal, ensuring the training process remains stable.
 
 #### 2.3.2 The Advantage Function
 PPO relies on the Advantage Function, $\hat{A}_t$, to guide updates. Instead of looking at raw rewards, the Advantage asks:
