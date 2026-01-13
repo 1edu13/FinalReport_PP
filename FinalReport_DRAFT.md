@@ -195,6 +195,7 @@ The training process is orchestrated in `train.py` using a vectorized architectu
 
 ![PPO Training Loop Diagram](ppo_diagram.png)  
 *Figure 2: Visual representation of the PPO training cycle, showing the data collection phase (filling the buffer) and the backpropagation phase (updating Actor and Critic).*
+
 #### **Phase 1: Vectorized Environment Setup**
 Instead of training on a single track, we initialize **8 parallel environments** (`num_envs=8`) using `gym.vector.AsyncVectorEnv`. This allows the agent to collect diverse experiences simultaneously, breaking the correlation between consecutive samples and stabilizing training.
 * **Batch Size:** Each environment runs for 1,024 steps per iteration, resulting in a total batch size of **8,192 transitions** per update.
@@ -206,7 +207,7 @@ In this phase, the agent interacts with the environment without updating its wei
 2.  **Storage:** The transition $(s_t, a_t, r_t, d_t, \log \pi_t, V_t)$ is stored in a buffer on the GPU.
 
 #### **Phase 3: Generalized Advantage Estimation (GAE)**
-Once the buffer is full, we calculate the **Advantage** ($\hat{A}_t$), which measures how much better an action was compared to the Critic's expectation. We use GAE with $\gamma=0.99$ and $\lambda=0.95$ to balance bias and variance. The calculation is performed backwards from the last step:
+Once the buffer is full, we calculate the **Advantage** ($\hat{A}_t$), which measures how much better an action was compared to the Critic's expectation. We use GAE to balance bias and variance. The calculation is performed backwards:
 
 $$
 \delta_t = r_t + \gamma V(s_{t+1})(1 - d_{t+1}) - V(s_t)
@@ -216,7 +217,13 @@ $$
 \hat{A}_t = \delta_t + (\gamma \lambda) \hat{A}_{t+1}
 $$
 
-where $\delta_t$ represents the **Temporal Difference (TD) error**.
+**Where:**
+* $\delta_t$: Temporal Difference (TD) error at step $t$.
+* $r_t$: Immediate reward received from the environment.
+* $V(s)$: Value estimated by the Critic network.
+* $d_{t+1}$: "Done" flag (1 if the episode ended, 0 otherwise).
+* $\gamma$ (**Gamma**): Discount factor (set to `0.99`), determining the weight of future rewards.
+* $\lambda$ (**Lambda**): GAE smoothing parameter (set to `0.95`), balancing bias vs. variance.
 
 #### **Phase 4: Optimization (Backpropagation)**
 The collected batch (8,192 samples) is flattened and shuffled. The optimization runs for **10 epochs** (`update_epochs`) with minibatches of size 256. The weights are updated by minimizing the following **Total Loss function**:
@@ -225,14 +232,24 @@ $$
 L_{total} = \underbrace{L^{CLIP}(\theta)}_{\text{Policy Loss}} + c_{vf} \underbrace{L^{VF}(\theta)}_{\text{Value Loss}} - c_{ent} \underbrace{S[\pi](s)}_{\text{Entropy Bonus}}
 $$
 
+**Where:**
+* $c_{vf}$: Value coefficient (set to `0.5`).
+* $c_{ent}$: Entropy coefficient (set to `0.01`).
+
 Implementation details from `train.py`:
+
 1.  **Policy Loss ($L^{CLIP}$):** We calculate the probability ratio $r_t(\theta) = \frac{\pi_{\theta}(a_t|s_t)}{\pi_{\theta_{old}}(a_t|s_t)}$. To prevent destructive updates, this ratio is clipped:
     $$L^{CLIP} = - \min \left( r_t \hat{A}_t, \ \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \hat{A}_t \right)$$
-    (with $\epsilon = 0.2$).
-2.  **Value Loss ($L^{VF}$):** The Critic is trained to minimize the Mean Squared Error (MSE) between its prediction and the computed returns, scaled by a coefficient $c_{vf} = 0.5$:
+    * $\epsilon$ (**Epsilon**): Clipping coefficient (set to `0.2`), limiting the policy change to $\pm 20\%$.
+    * $\hat{A}_t$: Normalized Advantage estimate.
+
+2.  **Value Loss ($L^{VF}$):** The Critic is trained to minimize the Mean Squared Error (MSE) between its prediction and the computed returns:
     $$L^{VF} = 0.5 \cdot (V_{\theta}(s_t) - R_t)^2$$
-3.  **Entropy Bonus ($S[\pi]$):** To encourage exploration and prevent premature convergence, we subtract the entropy of the policy distribution, scaled by $c_{ent} = 0.01$.
-4.  **Gradient Clipping:** Finally, the global norm of the gradients is clipped to $0.5$ before the optimizer step to ensure stability.
+    * $R_t$: The calculated return ($A_t + V_t$).
+
+3.  **Entropy Bonus ($S[\pi]$):** The entropy of the distribution is subtracted from the loss to encourage exploration, preventing the agent from becoming deterministic too early.
+
+4.  **Gradient Clipping:** Finally, the global norm of the gradients is clipped to `0.5` before the optimizer step to ensure stability.
 ---
 
 ## 5. Evaluation of the Training Process and Results
