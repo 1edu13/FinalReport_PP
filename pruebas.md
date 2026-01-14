@@ -11,13 +11,15 @@ To test this hypothesis, we formally defined two distinct reward policies used d
 **A. Baseline Policy (Standard CarRacing-v2)**
 *Used in initial training experiments (`train.py`).*
 
-The default reward structure focuses purely on velocity and track completion. The reward $R_t$ at step $t$ is defined as:
+The default reward structure focuses purely on velocity and track completion. The reward (*R_t*) at step *t* is defined as:
 
-$$R_t = \underbrace{ \left( \frac{1000}{N} \cdot \Delta_{visited} \right) }_{\text{Progress}} - \underbrace{ 0.1 }_{\text{Time Penalty}}$$
+> **R_t = (1000 / N × Δ_visited) - 0.1**
 
-Where:
-* **Progress (+):** The agent gains $+1000/N$ points for every new track tile visited (where $N$ is the total number of tiles).
-* **Time Penalty (-):** A constant cost of $-0.1$ per frame encourages speed.
+**Where:**
+* *N*: The total number of track tiles in the generated circuit.
+* *Δ_visited*: The number of **new** track tiles visited in the current step.
+* *1000/N*: The normalized reward points gained for visiting a new tile.
+* *-0.1*: A constant time penalty applied at every frame to encourage faster driving.
 * **Deficiency:** There is no explicit negative reward for driving on the grass, allowing the agent to cut corners or survive off-track.
 
 **B. Robust Policy (Implementation: Grass Penalty)**
@@ -25,14 +27,22 @@ Where:
 
 To address the baseline deficiencies, we implemented a custom `GrassPenaltyWrapper` that modifies the reward structure based on visual feedback. The new reward function is:
 
-$$R'_t = R_t - P_{grass}$$
+$$R'_t = R_t - P$$
 
-The penalty logic ($P_{grass}$) is implemented as follows:
+**Where:**
+* *R_t*: The baseline reward defined above.
+* *P_grass*: The dynamic penalty term for unsafe driving.
 
-1.  **RGB Detection:** The wrapper analyzes the original RGB observation to detect "grass" pixels using a specific color filter (Green channel $> 150$, while Red and Blue $< 100$).
-2.  **Penalty Application ($P_{grass}$):** If the ratio of green pixels in the agent's view exceeds **25%** ($green\_ratio > 0.25$), a strictly negative penalty ($-0.8$) is subtracted from the reward at each step:
-    $$P_{grass} = \begin{cases} 0.8 & \text{if } green\_ratio > 0.25 \\ 0 & \text{otherwise} \end{cases}$$
-3.  **Early Termination:** To prevent the agent from wandering indefinitely in the field, the episode is automatically terminated if the car remains off-track for more than **50 consecutive frames** ($max\_off\_track$).
+**Penalty Logic (*P_grass*):**
+The system analyzes the RGB observation to detect "grass" pixels (Green > 150, Red/Blue < 100) and applies the penalty as follows:
+
+* **If *green_ratio* > 0.25:** The car is considered off-track.
+    * **Penalty Applied:** *P_grass* = **0.8**
+* **Otherwise:**
+    * **Penalty:** *P_grass* = **0**
+
+**Safety Termination:**
+The episode is automatically terminated (Fail) if the car remains off-track (*green_ratio* > 0.25) for more than **50 consecutive frames**.
 
 **Evaluation Metrics:**
-For the comparative analysis, we use **Mean Reward** to assess driving quality and **Win Rate** ($\%$ episodes $> 900$ points) to determine optimal racing behavior.
+For the comparative analysis, we use **Mean Reward** to assess driving quality and **Win Rate** (% episodes > 900 points) to determine optimal racing behavior.

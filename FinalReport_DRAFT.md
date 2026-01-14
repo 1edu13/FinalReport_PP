@@ -152,7 +152,7 @@ The reward function $R(s, a)$ is the core signal that guides learning. We use th
 The total reward for an episode is calculated as:
 
 $$
-R_{episode} = \sum_{t=0}^{T} \left( \underbrace{r_{tile}}_{\text{Progress}} + \underbrace{r_{time}}_{\text{Speed Incentive}} \right) + \underbrace{r_{penalty}}_{\text{Safety}}
+R_{episode} = \sum_{t=0}^{T} (r_{tile} + r_{time}) + r_{penalty}
 $$
 
 Where:
@@ -308,12 +308,13 @@ To test this hypothesis, we formally defined two distinct reward policies used d
 *Used in initial training experiments (`train.py`).*
 
 The default reward structure focuses purely on velocity and track completion. The reward $R_t$ at step $t$ is defined as:
+$$R_t = \left( \frac{1000}{N} \cdot \Delta_{visited} \right) - 0.1$$
 
-$$R_t = \underbrace{ \left( \frac{1000}{N} \cdot \Delta_{visited} \right) }_{\text{Progress}} - \underbrace{ 0.1 }_{\text{Time Penalty}}$$
-
-Where:
-* **Progress (+):** The agent gains $+1000/N$ points for every new track tile visited (where $N$ is the total number of tiles).
-* **Time Penalty (-):** A constant cost of $-0.1$ per frame encourages speed.
+**Where:**
+* $N$: The total number of track tiles in the generated circuit.
+* $\Delta_{visited}$: The number of **new** track tiles visited in the current step (usually $1$ or $0$).
+* $1000/N$: The normalized reward points gained for visiting a new tile.
+* $-0.1$: A constant time penalty applied at every frame to encourage faster driving.
 * **Deficiency:** There is no explicit negative reward for driving on the grass, allowing the agent to cut corners or survive off-track.
 
 **B. Robust Policy (Implementation: Grass Penalty)**
@@ -321,13 +322,16 @@ Where:
 
 To address the baseline deficiencies, we implemented a custom `GrassPenaltyWrapper` that modifies the reward structure based on visual feedback. The new reward function is:
 
-$$R'_t = R_t - P_{grass}$$
+$$R_t^{\prime} = R_t - P_{grass}$$
 
 The penalty logic ($P_{grass}$) is implemented as follows:
 
 1.  **RGB Detection:** The wrapper analyzes the original RGB observation to detect "grass" pixels using a specific color filter (Green channel $> 150$, while Red and Blue $< 100$).
 2.  **Penalty Application ($P_{grass}$):** If the ratio of green pixels in the agent's view exceeds **25%** ($green\_ratio > 0.25$), a strictly negative penalty ($-0.8$) is subtracted from the reward at each step:
-    $$P_{grass} = \begin{cases} 0.8 & \text{if } green\_ratio > 0.25 \\ 0 & \text{otherwise} \end{cases}$$
+    * **If *green_ratio* > 0.25:** The car is considered off-track.
+    * **Penalty Applied:** *P_grass* = **0.8**
+* **Otherwise:**
+    * **Penalty:** *P_grass* = **0**
 3.  **Early Termination:** To prevent the agent from wandering indefinitely in the field, the episode is automatically terminated if the car remains off-track for more than **50 consecutive frames** ($max\_off\_track$).
 
 **Evaluation Metrics:**
