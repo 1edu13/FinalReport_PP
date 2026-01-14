@@ -53,7 +53,15 @@ Our implementation uses two distinct networks (or heads):
 2.  **The Critic ($V_\phi$):** Estimates the value of the current state. This is crucial for computing the **Advantage**. This value acts as a **baseline** that is subtracted from the empirical return ($R_t$) to calculate the **Advantage** ($A_t = R_t - V(s)$).
   Theoretically, using this baseline reduces the **variance** of the policy gradient estimates without introducing bias. This relates to the definition of variance, $\text{Var}(X) = \mathbb{E}[(X - \mathbb{E}[X])^2]$; by minimizing the Mean Squared Error (MSE) between the predicted value and the actual return, the Critic effectively "centers" the learning signal, ensuring the training process remains stable.
 
-#### 2.3.2 The Advantage Function
+#### 2.3.2 Value Function and Bellman Equation
+The goal of the **Critic** component is to learn an accurate value function $V(s)$, which estimates the expected future return from a given state. To achieve this, training is grounded in the **Bellman Equation**, which establishes a fundamental recursive relationship: the value of the current state must equal the immediate reward plus the discounted value of the next state.
+
+$$
+V(s_t) \approx r_t + \gamma V(s_{t+1})
+$$
+
+During optimization, the Critic minimizes the Mean Squared Error (MSE) between its current prediction $V(s_t)$ and this "Bellman target" ($r_t + \gamma V(s_{t+1})$), thereby learning to better predict the long-term value of the agent's actions.
+#### 2.3.3 The Advantage Function
 PPO relies on the Advantage Function, $\hat{A}_t$, to guide updates. Instead of looking at raw rewards, the Advantage asks:
 *> "How much better was this specific action compared to the average action the agent usually takes in this state?"*
 
@@ -61,7 +69,7 @@ $$\hat{A}_t = Q(s,a) - V(s)$$
 
 This helps the algorithm focus specifically on actions that yield *unexpectedly* good results, reducing variance in training.
 
-#### 2.3.3 The Clipped Surrogate Objective (The "Guardrails")
+#### 2.3.4 The Clipped Surrogate Objective
 The key innovation of PPO is how it updates the policy. It limits how much the policy can change in a single update using a **clipping mechanism**.
 
 Let $r_t(\theta)$ be the probability ratio between the new policy and the old policy: $r_t(\theta) = \frac{\pi_{\theta}(a_t|s_t)}{\pi_{\theta_{old}}(a_t|s_t)}$.
@@ -120,10 +128,6 @@ The raw environment provides a $96 \times 96 \times 3$ RGB image. To enable the 
 
 **Final State Shape:** Tensor of shape `(Batch_Size, 4, 96, 96)`.![Example of how the environment looks like](enviroment.png)  
 *Figure 1: Visual example of the `CarRacing-v2` (Gymnasium) environment.*
-
-
-
-**Final state shape:** tensor of shape ((4, 96, 96)\) (Channels, Height, Width).
 
 ### 3.3 Action Space (Action Representation)
 Unlike discrete environments (e.g., "Press Left" or "Press Right"), driving requires smooth, continuous adjustments. The agent operates in a continuous action space controlling three actuators. The Policy Network outputs a **Gaussian distribution** (mean and learnable standard deviation) for each action, from which values are sampled.
