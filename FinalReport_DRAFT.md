@@ -211,24 +211,42 @@ In this phase, the agent interacts with the environment without updating its wei
 2.  **Storage:** The transition $(s_t, a_t, r_t, d_t, \log \pi_t, V_t)$ is stored in a buffer on the GPU.
 
 #### **Phase 3: Generalized Advantage Estimation (GAE)**
-Once the buffer is full, we calculate the **Advantage** ($\hat{A}_t$), which measures how much better an action was compared to the Critic's expectation. We use GAE to balance bias and variance. The calculation is performed backwards:
+
+Once the trajectory buffer is full, we evaluate the quality of the actions taken by calculating the **Advantage** ($\hat{A}_t$). This metric quantifies how much better a specific action was compared to the Critic's average expectation ($V(s)$). To obtain a robust estimate that effectively balances bias and variance, we use **Generalized Advantage Estimation (GAE)** based on the **Bellman Error**.
+
+**1. The Bellman Error (Temporal Difference)**
+The process begins by calculating the **Bellman Error** (or Temporal Difference error, $\delta_t$) for each step. This error measures the discrepancy between the *observed reality* (immediate reward + discounted future value) and the *Critic's prediction*.
 
 $$
 \delta_t = r_t + \gamma V(s_{t+1})(1 - d_{t+1}) - V(s_t)
 $$
+
+In our implementation (`train.py`), this mathematical concept is translated explicitly into code:
+
+```python
+# Bellman Error (delta) calculation
+# rewards[t]: Actual immediate reward
+# nextvalues: Estimated value of the next state (V(s_{t+1}))
+# values[t]:  Estimated value of the current state (V(s_t))
+
+delta = rewards[t] + gamma * nextvalues * nextnonterminal - values[t]
+```
+**2. GAE Calculation (Backwards Smoothing)** We then propagate these local errors backwards in time to calculate the final advantage $\hat{A}_t$. This recursive formulation allows the agent to credit actions that lead to rewards in the distant future.
 
 $$
 \hat{A}_t = \delta_t + (\gamma \lambda) \hat{A}_{t+1}
 $$
 
 **Where:**
-* $\delta_t$: Temporal Difference (TD) error at step $t$.
-* $r_t$: Immediate reward received from the environment.
-* $V(s)$: Value estimated by the Critic network.
-* $d_{t+1}$: "Done" flag (1 if the episode ended, 0 otherwise).
-* $\gamma$ (**Gamma**): Discount factor (set to `0.99`), determining the weight of future rewards.
-* $\lambda$ (**Lambda**): GAE smoothing parameter (set to `0.95`), balancing bias vs. variance.
 
+* **$\delta_t$:** Temporal Difference (TD) error at step $t$.
+* **$r_t$:** Immediate reward received from the environment.
+* **$V(s)$:** Value estimated by the Critic network.
+* **$d_{t+1}$:** "Done" flag (1 if the episode ended, 0 otherwise).
+* **$\gamma$ (Gamma):** Discount factor (set to 0.99), determining the weight of future rewards.
+* **$\lambda$ (Lambda):** GAE smoothing parameter (set to 0.95), balancing bias vs. variance.
+
+If the resulting Advantage $\hat{A}_t$ is positive, the action was better than expected, providing a positive signal to reinforce the policy.
 #### **Phase 4: Optimization (Backpropagation)**
 The collected batch (8,192 samples) is flattened and shuffled. The optimization runs for **10 epochs** (`update_epochs`) with minibatches of size 256. The weights are updated by minimizing the following **Total Loss function**:
 
