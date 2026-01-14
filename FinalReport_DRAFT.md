@@ -344,38 +344,59 @@ For the final comparative analysis, we employed a strict protocol to ensure robu
 * **Key Metrics:** We focus on the **Mean Reward** (to assess the overall quality of driving) and the **Win Rate** (percentage of episodes with reward \(> 900\)) to distinguish between consistently good performance and optimal racing behavior.
 
 
-### 5.2 Impact of Training Duration
+## 5.2 Impact of Training Duration (Policy B Analysis)
 
-This subsection analyzes how increasing the number of training steps affects driving performance.
+To understand the evolution of the agent's driving capabilities under the **Grass Penalty Policy (Policy B)**, we evaluated 8 distinct checkpoints ranging from **200,000 steps** to **3,000,000 steps**.
 
-#### 5.2.1 Learning Curves
-For each model, a **Reward vs. Training Step** curve is logged during training. These curves highlight:
+This analysis relies on the premise that adding a specific penalty for driving off-track ($r_{grass}$) forces the agent to learn "true" driving physics rather than cutting corners, potentially altering the learning curve compared to standard PPO implementations.
 
-- The **rapid improvement** phase at the beginning of training.
-- The **“knee” point** where additional training yields diminishing returns.
-- The **plateau region** where performance stabilizes around a maximum value.
+### 5.2.1 Learning Curve Analysis
 
-In practice, Model A (500K) shows only partial mastery of the task, Model B (1M) exhibits significantly smoother control and higher average scores, while Model C (2M) converges towards consistently high rewards.
+The training progression follows a clear **S-curve (Sigmoid-like) trajectory**, which can be divided into three distinct phases of learning:
 
-#### 5.2.2 Quantitative Comparison
+![Learning Curve (Log-Scale) of Policy B](learning_curve_B.png)
+*Figure 3: Learning Progression of the Grass Penalty Agent (Policy B).*
+1.  **Exploration Phase (200k - 500k steps):**
+    * The agent is still discovering the basic mechanics. At **200k steps**, the mean reward is merely **91.1**, indicating the car struggles to stay on track for more than a few seconds.
+    * By **500k steps**, the reward jumps to **258.1**. The agent has learned to accelerate but lacks the finesse to handle sharp turns without triggering the grass penalty.
 
-The table below summarizes the main evaluation metrics for the three checkpoints (values to be filled in from experiments):
+2.  **Rapid Improvement Phase (1M - 2M steps):**
+    * This is the steepest part of the curve. The agent transitions from "barely surviving" to "competent racing."
+    * Between **1.0M** and **1.5M steps**, the win rate (episodes > 900 points) emerges for the first time, rising from 0% to 33.3%, signaling that the agent is starting to complete laps cleanly.
+    * By **2.0M steps**, the agent achieves a high mean reward of **802.6**, with a peak win rate of **70.0%**.
 
-| Metric                     | 500K steps | 1M steps | 2M steps |
-|--------------------------- |-----------:|---------:|---------:|
-| **Mean reward**            |    xxx.x   |   xxx.x  |   xxx.x  |
-| **Std. dev. reward**      |    xxx.x   |   xxx.x  |   xxx.x  |
-| **Min / Max reward**      |  min–max   | min–max  | min–max  |
-| **Median reward**          |    xxx.x   |   xxx.x  |   xxx.x  |
-| **Win rate (> 900)**      |    xx.x %  |  xx.x %  |  xx.x %  |
-| **Success rate (> 0)**    |    xx.x %  |  xx.x %  |  xx.x %  |
-| **Mean episode length**   |    xxx.x   |   xxx.x  |   xxx.x  |
+3.  **Saturation and Stability Phase (2.5M - 3M steps):**
+    * At **2.5M steps**, the mean reward peaks at **845.9**. Interestingly, while the mean reward is higher than at 2.0M, the win rate drops slightly to 53.3%. This discrepancy is explained by the **standard deviation**, which drops significantly (from 235.3 to 144.3).
+    * This indicates that the **2.5M model is more robust**: it raises the "floor" of performance (higher minimum scores), avoiding catastrophic failures, even if it hits the perfect >900 score slightly less often than the aggressive 2.0M model.
+    * At **3.0M steps**, performance plateaus, confirming that ~2.5M steps is the optimal training budget for this configuration.
 
-The final report will discuss:
+### 5.2.2 Quantitative Metrics Breakdown
 
-- How much average reward increases from 500K to 2M steps.
-- How the standard deviation decreases, indicating more stable behavior.
-- At which point the curve effectively saturates (practical training budget).
+The following table summarizes the performance evolution across all 8 evaluated checkpoints. Data is aggregated from 30 evaluation episodes per model.
+
+| Model (Steps) | Mean Reward | Std. Dev. | Win Rate (>900) | Avg. Steps |
+| :--- | :--- | :--- | :--- | :--- |
+| **200k** | 91.14 | 89.79 | 0.0% | 243 |
+| **500k** | 258.14 | 123.40 | 0.0% | 361 |
+| **1.0M** | 421.08 | 215.24 | 0.0% | 523 |
+| **1.25M** | 535.04 | 274.47 | 23.3% | 582 |
+| **1.5M** | 639.60 | 295.38 | 33.3% | 684 |
+| **2.0M** | 802.58 | 235.34 | **70.0%** | 699 |
+| **2.5M** | **845.90** | **144.28** | 53.3% | 746 |
+| **3.0M** | 816.80 | 197.76 | 53.3% | 730 |
+*Table 1: Evolution of performance metrics. Note the trade-off between peak Win Rate (2.0M) and Stability/Mean Reward (2.5M).*
+
+### 5.2.3 Comparison: Policy A (Standard) vs. Policy B (Grass Penalty)
+
+A critical finding of this project is the impact of the **Grass Penalty** (Policy B) on the learning trajectory compared to the baseline approach (Policy A, trained without strict off-track penalties).
+
+1.  **Delayed Gratification:**
+    * **Policy A (Standard)** tends to achieve higher rewards earlier in training (e.g., around 500k steps) because it learns to "cut corners" through the grass. The standard environment penalty is lenient, allowing the agent to exploit off-track shortcuts to maximize speed.
+    * **Policy B (Grass Penalty)** shows a slower initial start. As seen in the table, rewards at 200k-500k are modest. The agent is strictly punished for touching the green, forcing it to unlearn any "shortcut" behavior and focus on staying strictly on the tarmac.
+
+2.  **Quality of Solution:**
+    * While Policy A may saturate faster, its driving style often appears unrealistic or "illegal" in racing terms.
+    * **Policy B** converges to a **superior qualitative solution**. By 2.0M - 2.5M steps, the agent drives smoothly, stays within the track borders, and exhibits anticipatory braking. The lower standard deviation at 2.5M steps ($\sigma=144.3$) confirms that the strict penalty eventually leads to a more reliable and robust driving policy.
 
 ### 5.3 Qualitative Behaviour Analysis
 
@@ -394,21 +415,62 @@ Numbers alone do not capture the quality of driving. Therefore, evaluation video
 
 Selected frames and short clips can be embedded in the presentation to illustrate the progression from unstable to reliable driving.
 
-### 5.4 Stability and Control Signals
+## 5.4 Stability and Control Signals
 
-The control signals are also examined to better understand the learned policy:
+Analyzing the internal telemetry of the agent reveals how its driving strategy matures over time. We focus on two key aspects: the **stability of the reward** (reliability) and the **evolution of control inputs** (steering, throttle, and brake).
 
-- **Steering:**
-  - High variance at 500K (nervous zig-zagging).
-  - Reduced variance at 2M, indicating smoother corrections.
-- **Throttle:**
-  - Low average throttle at 500K (overly cautious behavior).
-  - Higher and more consistent throttle at 2M, reflecting confidence in keeping the car on track.
-- **Brake:**
-  - Frequent braking at 500K, often unnecessary.
-  - More targeted braking at 2M, mostly before tight corners.
+### 5.4.1 Reward Stability Analysis
 
-These observations align with the improvement in reward and win rate and support the claim that the agent has learned a meaningful driving strategy rather than exploiting spurious artifacts.
+Stability is measured by the **Standard Deviation ($\sigma$)** of the total reward across evaluation episodes. A lower $\sigma$ indicates a more predictable and robust driver.
+
+![Reward Stability Box Plot](model_comparison_boxplot.png)
+*Figure 4: Distribution of rewards across training checkpoints. The "height" of each box represents the Interquartile Range (IQR). Note how the 2.5M model exhibits the most compact distribution among the high-performing agents, indicating superior consistency.*
+
+* **The "Nervous" Phase (1.0M - 2.0M steps):**
+    The model at **1.0M steps** shows a high deviation ($\sigma \approx 215$), which peaks at **1.5M steps** ($\sigma \approx 295$). During this phase, the agent is capable of high scores but frequently commits critical errors, leading to a wide spread of results (long "whiskers" in the boxplot).
+
+* **The "Reliable" Phase (2.5M steps):**
+    At **2.5M steps**, we observe a drastic drop in standard deviation to **$\sigma = 144.28$**, the lowest among the high-performing models. This confirms that the agent has consolidated its policy, eliminating most catastrophic failures. Although the 2.0M model achieved a higher peak win rate (70%), it was significantly less stable ($\sigma = 235.34$), making the **2.5M model the superior candidate for deployment** due to its consistency.
+
+### 5.4.2 Control Signals Evolution
+
+The average values of the actions taken by the agent (Steering, Gas, Brake) tell a compelling story about energy efficiency and control confidence.
+
+![Control Profile Radar Chart](B_control_radar.png)
+*Figure 5: Radar chart comparing the normalized control profiles. The 200k model (Red) shows a bias towards Throttle, while the mature 2.5M model (Blue) expands towards Efficiency and Brake usage.*
+
+| Model (Steps) | Throttle (Mean) | Brake (Mean) | Interpretation |
+| :--- | :--- | :--- | :--- |
+| **200k** | **0.372** | -0.515 | **Constant Acceleration:** The novice agent holds the gas down, leading to loss of control. |
+| **1.0M** | -0.276 | -0.857 | **Learning to Let Go:** The agent starts to release the gas pedal more often. |
+| **2.5M** | **-0.334** | **-1.273** | **Controlled Coasting:** The expert agent relies on momentum. |
+
+*Note: In the PPO continuous action space, negative output values correspond to a "do nothing" action (0.0) after clipping. A strongly negative mean indicates the agent is confident in **not** activating that pedal.*
+
+1.  **Throttle (Gas):**
+    * Early models (**200k**) exhibit a **positive mean throttle (0.37)**, indicating the agent is constantly pressing the accelerator. This explains the erratic behavior and frequent off-track excursions.
+    * As training progresses, the mean throttle drops significantly, becoming negative (**-0.33 at 2.5M**). This implies the converged agent has learned to **"coast"** (release the gas) for large sections of the track, applying power only when necessary to maintain speed or exit corners. This is a hallmark of smooth, professional racing lines versus the "floor-it" strategy of a beginner.
+
+2.  **Brake:**
+    * The brake signal remains deeply negative across all models (dropping from -0.51 to -1.39). The increasingly negative value at 2.5M (-1.27) suggests the agent has learned to keep the brake pedal "far from activation" to avoid accidental braking due to exploration noise, applying it only in sharp, decisive bursts.
+
+3.  **Steering:**
+    * The mean steering value remains close to zero (e.g., **-0.05 at 2.5M**), which is expected for a circuit with a balance of left and right turns. The low magnitude suggests the agent stays centered and avoids excessive zig-zagging corrections, further contributing to the stability observed in section 5.4.1.
+
+### 5.4.3 Visual Analytics Methodology
+
+To ensure a rigorous interpretation of the graphical data presented in Figure 4 (Boxplots) and Figure 5 (Radar Chart), we define the calculated metrics and statistical elements as follows, based on the evaluation of 30 episodes per model.
+
+**A. Boxplot Statistics (Stability Analysis)**
+The reward distribution is visualized using standard statistical boxplots (Figure 4). The elements are defined as follows:
+* **The Box (Interquartile Range - IQR):** Represents the central 50% of the data, spanning from the **1st Quartile ($Q1$, 25th percentile)** to the **3rd Quartile ($Q3$, 75th percentile)**. A vertically shorter box indicates high clustering of results, synonymous with high reliability.
+* **The Whiskers:** Extend to the most extreme data points within the range of $1.5 \times IQR$ from the box edges. They visualize the expected variability of the model.
+* **Points (Outliers):** Individual episodes falling outside the whiskers. These represent anomalies—rare failures or exceptionally lucky runs.
+
+**B. Control Radar Derived Metrics (Control Analysis)**
+The Control Radar (Figure 5) visualizes the agent's driving "personality" by normalizing raw telemetry data. In addition to raw control inputs (Throttle, Brake), we introduce two derived metrics:
+* **Efficiency ($\eta$):** Calculated as the ratio of reward to duration ($\eta = \frac{\text{Mean Reward}}{\text{Avg Steps}}$). This metric penalizes "slow and safe" driving. High efficiency indicates the agent maximizes points per second, finding optimal racing lines rather than merely surviving.
+* **Consistency ($C$):** Defined as the inverse of the standard deviation ($C = \frac{1}{\sigma + \epsilon}$). This metric rewards reproducibility; a high consistency score implies the agent's performance is almost identical across all test episodes, minimizing the variance caused by random initialization or noise.
 
 ### 5.5 Limitations
 

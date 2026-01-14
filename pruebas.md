@@ -1,48 +1,57 @@
-#### 5.1.2 Methodology Refinement & Evaluation Protocol
+## 5.4 Stability and Control Signals
 
-Initially, the training was conducted using the standard environment configuration (`train.py`) and evaluated using default metrics. However, an in-depth analysis of these preliminary results revealed inconsistent behaviors. While the agents were often able to complete the maximum episode length (1000 steps), visual inspection via video logs showed that the driving was erratic. The agents frequently survived by spinning in circles or drifting off-track without being penalized sufficiently, exploiting the survival reward rather than learning proper lane-keeping.
+Analyzing the internal telemetry of the agent reveals how its driving strategy matures over time. We focus on two key aspects: the **stability of the reward** (reliability) and the **evolution of control inputs** (steering, throttle, and brake).
 
-**Hypothesis:**
-For an autonomous vehicle, safety and road adherence must take precedence over raw velocity. We hypothesized that introducing a strict negative penalty for leaving the designated track would force the agent to learn stability and reduce "cheating" behaviors.
+### 5.4.1 Reward Stability Analysis
 
-**Reward Policy Evolution:**
-To test this hypothesis, we formally defined two distinct reward policies used during the experimentation phase.
+Stability is measured by the **Standard Deviation ($\sigma$)** of the total reward across evaluation episodes. A lower $\sigma$ indicates a more predictable and robust driver.
 
-**A. Baseline Policy (Standard CarRacing-v2)**
-*Used in initial training experiments (`train.py`).*
+![Reward Stability Box Plot](model_comparison_boxplot.png)
+*Figure 4: Distribution of rewards across training checkpoints. The "height" of each box represents the Interquartile Range (IQR). Note how the 2.5M model exhibits the most compact distribution among the high-performing agents, indicating superior consistency.*
 
-The default reward structure focuses purely on velocity and track completion. The reward (*R_t*) at step *t* is defined as:
+* **The "Nervous" Phase (1.0M - 2.0M steps):**
+    The model at **1.0M steps** shows a high deviation ($\sigma \approx 215$), which peaks at **1.5M steps** ($\sigma \approx 295$). During this phase, the agent is capable of high scores but frequently commits critical errors, leading to a wide spread of results (long "whiskers" in the boxplot).
 
-> **R_t = (1000 / N × Δ_visited) - 0.1**
+* **The "Reliable" Phase (2.5M steps):**
+    At **2.5M steps**, we observe a drastic drop in standard deviation to **$\sigma = 144.28$**, the lowest among the high-performing models. This confirms that the agent has consolidated its policy, eliminating most catastrophic failures. Although the 2.0M model achieved a higher peak win rate (70%), it was significantly less stable ($\sigma = 235.34$), making the **2.5M model the superior candidate for deployment** due to its consistency.
 
-**Where:**
-* *N*: The total number of track tiles in the generated circuit.
-* *Δ_visited*: The number of **new** track tiles visited in the current step.
-* *1000/N*: The normalized reward points gained for visiting a new tile.
-* *-0.1*: A constant time penalty applied at every frame to encourage faster driving.
-* **Deficiency:** There is no explicit negative reward for driving on the grass, allowing the agent to cut corners or survive off-track.
+### 5.4.2 Control Signals Evolution
 
-**B. Robust Policy (Implementation: Grass Penalty)**
-*Used for the final evaluated models (`train2.py`).*
+The average values of the actions taken by the agent (Steering, Gas, Brake) tell a compelling story about energy efficiency and control confidence.
 
-To address the baseline deficiencies, we implemented a custom `GrassPenaltyWrapper` that modifies the reward structure based on visual feedback. The new reward function is:
+![Control Profile Radar Chart](B_control_radar.png)
+*Figure 5: Radar chart comparing the normalized control profiles. The 200k model (Red) shows a bias towards Throttle, while the mature 2.5M model (Blue) expands towards Efficiency and Brake usage.*
 
-$$R'_t = R_t - P$$
+| Model (Steps) | Throttle (Mean) | Brake (Mean) | Interpretation |
+| :--- | :--- | :--- | :--- |
+| **200k** | **0.372** | -0.515 | **Constant Acceleration:** The novice agent holds the gas down, leading to loss of control. |
+| **1.0M** | -0.276 | -0.857 | **Learning to Let Go:** The agent starts to release the gas pedal more often. |
+| **2.5M** | **-0.334** | **-1.273** | **Controlled Coasting:** The expert agent relies on momentum. |
 
-**Where:**
-* *R_t*: The baseline reward defined above.
-* *P_grass*: The dynamic penalty term for unsafe driving.
+*Note: In the PPO continuous action space, negative output values correspond to a "do nothing" action (0.0) after clipping. A strongly negative mean indicates the agent is confident in **not** activating that pedal.*
 
-**Penalty Logic (*P_grass*):**
-The system analyzes the RGB observation to detect "grass" pixels (Green > 150, Red/Blue < 100) and applies the penalty as follows:
+1.  **Throttle (Gas):**
+    * Early models (**200k**) exhibit a **positive mean throttle (0.37)**, indicating the agent is constantly pressing the accelerator. This explains the erratic behavior and frequent off-track excursions.
+    * As training progresses, the mean throttle drops significantly, becoming negative (**-0.33 at 2.5M**). This implies the converged agent has learned to **"coast"** (release the gas) for large sections of the track, applying power only when necessary to maintain speed or exit corners. This is a hallmark of smooth, professional racing lines versus the "floor-it" strategy of a beginner.
 
-* **If *green_ratio* > 0.25:** The car is considered off-track.
-    * **Penalty Applied:** *P_grass* = **0.8**
-* **Otherwise:**
-    * **Penalty:** *P_grass* = **0**
+2.  **Brake:**
+    * The brake signal remains deeply negative across all models (dropping from -0.51 to -1.39). The increasingly negative value at 2.5M (-1.27) suggests the agent has learned to keep the brake pedal "far from activation" to avoid accidental braking due to exploration noise, applying it only in sharp, decisive bursts.
 
-**Safety Termination:**
-The episode is automatically terminated (Fail) if the car remains off-track (*green_ratio* > 0.25) for more than **50 consecutive frames**.
+3.  **Steering:**
+    * The mean steering value remains close to zero (e.g., **-0.05 at 2.5M**), which is expected for a circuit with a balance of left and right turns. The low magnitude suggests the agent stays centered and avoids excessive zig-zagging corrections, further contributing to the stability observed in section 5.4.1.
 
-**Evaluation Metrics:**
-For the comparative analysis, we use **Mean Reward** to assess driving quality and **Win Rate** (% episodes > 900 points) to determine optimal racing behavior.
+### 5.4.3 Visual Analytics Methodology
+
+To ensure a rigorous interpretation of the graphical data presented in Figure 4 (Boxplots) and Figure 5 (Radar Chart), we define the calculated metrics and statistical elements as follows, based on the evaluation of 30 episodes per model.
+
+**A. Boxplot Statistics (Stability Analysis)**
+The reward distribution is visualized using standard statistical boxplots (Figure 4). The elements are defined as follows:
+* **The Box (Interquartile Range - IQR):** Represents the central 50% of the data, spanning from the **1st Quartile ($Q1$, 25th percentile)** to the **3rd Quartile ($Q3$, 75th percentile)**. A vertically shorter box indicates high clustering of results, synonymous with high reliability.
+* **The Whiskers:** Extend to the most extreme data points within the range of $1.5 \times IQR$ from the box edges. They visualize the expected variability of the model.
+* **Points (Outliers):** Individual episodes falling outside the whiskers. These represent anomalies—rare failures or exceptionally lucky runs.
+
+**B. Control Radar Derived Metrics (Control Analysis)**
+The Control Radar (Figure 5) visualizes the agent's driving "personality" by normalizing raw telemetry data. In addition to raw control inputs (Throttle, Brake), we introduce two derived metrics:
+* **Efficiency ($\eta$):** Calculated as the ratio of reward to duration ($\eta = \frac{\text{Mean Reward}}{\text{Avg Steps}}$). This metric penalizes "slow and safe" driving. High efficiency indicates the agent maximizes points per second, finding optimal racing lines rather than merely surviving.
+* **Consistency ($C$):** Defined as the inverse of the standard deviation ($C = \frac{1}{\sigma + \epsilon}$). This metric rewards reproducibility; a high consistency score implies the agent's performance is almost identical across all test episodes, minimizing the variance caused by random initialization or noise.
+![alt text](image.png)
