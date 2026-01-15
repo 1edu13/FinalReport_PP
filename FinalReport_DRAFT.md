@@ -1,13 +1,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+
 <script type="text/x-mathjax-config">
-    MathJax.Hub.Config({
-        tex2jax: {
-            inlineMath: [['$', '$']],
-            displayMath: [['$$', '$$']],
-            processEscapes: true
-        },
-        messageStyle: "none"
-    });
+    MathJax.Hub.Config({ tex2jax: {inlineMath: [['$', '$']]}, messageStyle: "none" });
+</script>
+
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({ tex2jax: {inlineMath: [['$', '$']]}, messageStyle: "none" });
+</script>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({ tex2jax: {inlineMath: [['$', '$']]}, messageStyle: "none" });
 </script>
 
 <script type="text/x-mathjax-config">
@@ -29,12 +30,16 @@
 
 ---
 
+<div style="page-break-after: always;"></div>
+
 ## 1. Introduction
 The objective of this project is to develop an autonomous agent capable of navigating a race track effectively. Using **Reinforcement Learning (RL)**, specifically the **Proximal Policy Optimization (PPO)** algorithm, the agent learns to control a vehicle in the `CarRacing-v2` environment.
 
 Unlike rule-based systems, the agent learns purely from visual inputs (pixels) and trial-and-error interactions, aiming to maximize a reward signal based on speed and track completion. This implementation is built from scratch using **PyTorch** and **NumPy**, avoiding high-level abstractions like Stable Baselines3 to demonstrate a deep understanding of the underlying algorithms.
 
 ---
+
+<div style="page-break-after: always;"></div>
 
 ## 2. Short Theory Explanation
 
@@ -95,6 +100,8 @@ $$
 * However, if $r_t$ grows beyond $1+\epsilon$ (usually 1.2), the clipping term kicks in.
 * This effectively stops the update from being too drastic. It ensures the new policy stays **proximal** (close) to the old one, preventing the catastrophic forgetting common in standard RL.
 ---
+
+<div style="page-break-after: always;"></div>
 
 ## 3. Specification of Demonstrator Setting
 
@@ -165,8 +172,8 @@ The reward function $R(s, a)$ is the core signal that guides learning. To evalua
 
 For a detailed specification of these functions, the mathematical formulation, and the comparative analysis of their performance, please refer to **Section 5.1.2**.
 
-
 ---
+<div style="page-break-after: always;"></div>
 
 ## 4. Methods and Implementation Strategy
 
@@ -246,9 +253,9 @@ delta = rewards[t] + gamma * nextvalues * nextnonterminal - values[t]
 ```
 **2. GAE Calculation (Backwards Smoothing)** We then propagate these local errors backwards in time to calculate the final advantage $\hat{A}_t$. This recursive formulation allows the agent to credit actions that lead to rewards in the distant future.
 
-$$
-\hat{A}_t = \delta_t + \gamma \lambda \hat{A}_{t+1}
-$$
+<div align="center">
+  <img src="image.png" alt="fórmula" width="150" />
+</div>
 
 **Where:**
 
@@ -263,14 +270,12 @@ If the resulting Advantage $\hat{A}_t$ is positive, the action was better than e
 #### **Phase 4: Optimization (Backpropagation)**
 The collected batch (8,192 samples) is flattened and shuffled. The optimization runs for **10 epochs** (`update_epochs`) with minibatches of size 256. The weights are updated by minimizing the following **Total Loss function**:
 
-$$
-L_{total} = L^{CLIP}(\theta) + c_{vf} L^{VF}(\theta) - c_{ent} S[\pi](s)
-$$
+$$L_{total}=L^{CLIP}(\theta)+c_{vf}L^{VF}(\theta)-c_{ent}S[\pi]$$
 
 **Where:**
 * $L^{CLIP}(\theta)$: Policy Loss.
 * $L^{VF}(\theta)$: Value Loss.
-* $S[\pi](s)$: Entropy Bonus.
+* $S[\pi]$: Entropy Bonus. 
 * $c_{vf}$: Value coefficient (set to $0.5$).
 * $c_{ent}$: Entropy coefficient (set to $0.01$).
 
@@ -289,6 +294,8 @@ Implementation details from `train.py` and `train2.py`:
 
 4.  **Gradient Clipping:** Finally, the global norm of the gradients is clipped to `0.5` before the optimizer step to ensure stability.
 ---
+
+<div style="page-break-after: always;"></div>
 
 ## 5. Evaluation of the Training Process and Results
 
