@@ -1,4 +1,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript"></script>
+<script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+        tex2jax: {
+            inlineMath: [['$', '$']],
+            displayMath: [['$$', '$$']],
+            processEscapes: true
+        },
+        messageStyle: "none"
+    });
+</script>
 
 <script type="text/x-mathjax-config">
     MathJax.Hub.Config({ tex2jax: {inlineMath: [['$', '$']]}, messageStyle: "none" });
@@ -146,21 +156,16 @@ $$
 | **Gas** | $[0.0, 1.0]$ | Throttle/Acceleration intensity. |
 | **Brake** | $[0.0, 1.0]$ | Braking intensity. |
 
+
 ### 3.4 Reward Function
-The reward function $R(s, a)$ is the core signal that guides learning. We use the standard dense reward structure of `CarRacing-v2`, which implicitly balances speed and safety.
+The reward function $R(s, a)$ is the core signal that guides learning. To evaluate the impact of safety constraints on driving behavior, we implemented and tested two different reward configurations:
 
-The total reward for an episode is calculated as:
+1.  **Standard Reward (Baseline):** We utilize the default `CarRacing-v2` reward structure. This signal implicitly balances speed and safety by rewarding track progress (visiting new tiles) and applying a small time penalty at every step to encourage velocity. 
+2.  **Grass-Penalty Reward (Custom):** To mitigate "corner-cutting" behaviors observed in the baseline, we developed a custom wrapper. This configuration introduces a severe negative penalty whenever the agent drives on the grass (green pixels) and forces early termination if the car goes off-track for too long.
 
-$$
-R_{episode} = \sum_{t=0}^{T} (r_{tile} + r_{time}) + r_{penalty}
-$$
+For a detailed specification of these functions, the mathematical formulation, and the comparative analysis of their performance, please refer to **Section 5.1.2**.
 
-Where:
-* **Progress Reward ($r_{tile}$):** The track is composed of $N$ tiles. Visiting a new tile yields $+1000/N$ points. Visiting all tiles results in $+1000$ points.
-* **Time Penalty ($r_{time}$):** A constant penalty of $-0.1$ is applied at every time step. This forces the agent to drive fast; if it drives too slowly, the accumulated negative time penalty will outweigh the progress reward.
-* **Safety Penalty ($r_{penalty}$):** If the car moves completely off the field of play (all wheels on grass), the episode terminates immediately with a penalty of $-100$.
 
-* **Success Criterion:** The agent is considered to have "solved" the environment if it consistently achieves a score **> 900 points**, implying it completed the track reasonably fast with minimal errors.
 ---
 
 ## 4. Methods and Implementation Strategy
@@ -195,7 +200,7 @@ The architecture follows a standard **Actor-Critic** design sharing a common con
 
 ### 4.4 Training Loop Implementation Details
 
-The training process is orchestrated in `train.py` using a vectorized architecture to maximize GPU efficiency. The algorithm follows a strict cycle of **Collection $\rightarrow$ Estimation $\rightarrow$ Optimization**, repeated until the total step budget (3M steps) is reached.
+The training process is orchestrated in `train.py` (same in `train2.py`) using a vectorized architecture to maximize GPU efficiency. The algorithm follows a strict cycle of **Collection $\rightarrow$ Estimation $\rightarrow$ Optimization**, repeated until the total step budget (3M steps) is reached.
 
 ![PPO Training Loop Diagram](ppo_diagram.png)  
 *Figure 2: Visual representation of the PPO training cycle, showing the data collection phase (filling the buffer) and the backpropagation phase (updating Actor and Critic).*
@@ -221,7 +226,15 @@ $$
 \delta_t = r_t + \gamma V(s_{t+1})(1 - d_{t+1}) - V(s_t)
 $$
 
-In our implementation (`train.py`), this mathematical concept is translated explicitly into code:
+**Where:**
+
+* **$r_t$:** Immediate reward received from the environment.
+* **$V(s)$:** Value estimated by the Critic network.
+* **$d_{t+1}$:** "Done" flag (1 if the episode ended, 0 otherwise).
+* **$\gamma$ (Gamma):** Discount factor (set to 0.99), determining the weight of future rewards.
+* **$\lambda$ (Lambda):** GAE smoothing parameter (set to 0.95), balancing bias vs. variance.
+
+In our implementation (`train.py`, `train2.py`), this mathematical concept is translated explicitly into code:
 
 ```python
 # Bellman Error (delta) calculation
@@ -234,31 +247,34 @@ delta = rewards[t] + gamma * nextvalues * nextnonterminal - values[t]
 **2. GAE Calculation (Backwards Smoothing)** We then propagate these local errors backwards in time to calculate the final advantage $\hat{A}_t$. This recursive formulation allows the agent to credit actions that lead to rewards in the distant future.
 
 $$
-\hat{A}_t = \delta_t + (\gamma \lambda) \hat{A}_{t+1}
+\hat{A}_t = \delta_t + \gamma \lambda \hat{A}_{t+1}
 $$
 
 **Where:**
 
-* **$\delta_t$:** Temporal Difference (TD) error at step $t$.
-* **$r_t$:** Immediate reward received from the environment.
-* **$V(s)$:** Value estimated by the Critic network.
-* **$d_{t+1}$:** "Done" flag (1 if the episode ended, 0 otherwise).
-* **$\gamma$ (Gamma):** Discount factor (set to 0.99), determining the weight of future rewards.
-* **$\lambda$ (Lambda):** GAE smoothing parameter (set to 0.95), balancing bias vs. variance.
+* $\hat{A}_t$: Advantage estimate at time $t$.
+* $\delta_t$: Temporal Difference (TD) error.
+* $\gamma$: Discount factor.
+* $\lambda$: GAE parameter.
+
+
 
 If the resulting Advantage $\hat{A}_t$ is positive, the action was better than expected, providing a positive signal to reinforce the policy.
 #### **Phase 4: Optimization (Backpropagation)**
 The collected batch (8,192 samples) is flattened and shuffled. The optimization runs for **10 epochs** (`update_epochs`) with minibatches of size 256. The weights are updated by minimizing the following **Total Loss function**:
 
 $$
-L_{total} = \underbrace{L^{CLIP}(\theta)}_{\text{Policy Loss}} + c_{vf} \underbrace{L^{VF}(\theta)}_{\text{Value Loss}} - c_{ent} \underbrace{S[\pi](s)}_{\text{Entropy Bonus}}
+L_{total} = L^{CLIP}(\theta) + c_{vf} L^{VF}(\theta) - c_{ent} S[\pi](s)
 $$
 
 **Where:**
-* $c_{vf}$: Value coefficient (set to `0.5`).
-* $c_{ent}$: Entropy coefficient (set to `0.01`).
+* $L^{CLIP}(\theta)$: Policy Loss.
+* $L^{VF}(\theta)$: Value Loss.
+* $S[\pi](s)$: Entropy Bonus.
+* $c_{vf}$: Value coefficient (set to $0.5$).
+* $c_{ent}$: Entropy coefficient (set to $0.01$).
 
-Implementation details from `train.py`:
+Implementation details from `train.py` and `train2.py`:
 
 1.  **Policy Loss ($L^{CLIP}$):** We calculate the probability ratio $r_t(\theta) = \frac{\pi_{\theta}(a_t|s_t)}{\pi_{\theta_{old}}(a_t|s_t)}$. To prevent destructive updates, this ratio is clipped:
     $$L^{CLIP} = - \min \left( r_t \hat{A}_t, \ \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \hat{A}_t \right)$$
@@ -387,7 +403,7 @@ The following table summarizes the performance evolution across all 8 evaluated 
 *Table 1: Evolution of performance metrics. Note the trade-off between peak Win Rate (2.0M) and Stability/Mean Reward (2.5M).*
 
 ![Reward Distributions Analysis](reward_distribution.png)
-*Figure 3: Reward Distribution Analysis by Training Step. These histograms visualize the probability density of returns for each model checkpoint.*
+*Figure 4: Reward Distribution Analysis by Training Step. These histograms visualize the probability density of returns for each model checkpoint.*
 
 ### 5.3 Stability and Control Signals
 
@@ -398,7 +414,7 @@ Analyzing the internal telemetry of the agent reveals how its driving strategy m
 Stability is measured by the **Standard Deviation ($\sigma$)** of the total reward across evaluation episodes. A lower $\sigma$ indicates a more predictable and robust driver.
 
 ![Reward Stability Box Plot](model_comparison_boxplot.png)
-*Figure 4: Distribution of rewards across training checkpoints. The "height" of each box represents the Interquartile Range (IQR). Note how the 2.5M model exhibits the most compact distribution among the high-performing agents, indicating superior consistency.*
+*Figure 5: Distribution of rewards across training checkpoints. The "height" of each box represents the Interquartile Range (IQR). Note how the 2.5M model exhibits the most compact distribution among the high-performing agents, indicating superior consistency.*
 
 * **The "Nervous" Phase (1.0M - 2.0M steps):**
     The model at **1.0M steps** shows a high deviation ($\sigma \approx 215$), which peaks at **1.5M steps** ($\sigma \approx 295$). During this phase, the agent is capable of high scores but frequently commits critical errors, leading to a wide spread of results (long "whiskers" in the boxplot).
@@ -411,7 +427,7 @@ Stability is measured by the **Standard Deviation ($\sigma$)** of the total rewa
 The evolution of the action distribution (Steering, Gas, Brake) reveals a transition from rudimentary "bang-bang" control to a sophisticated understanding of vehicle dynamics and momentum conservation.
 
 ![Control Profile Radar Chart](B_control_radar.png)
-*Figure 5: Multi-dimensional analysis of control dynamics. The Radar Chart illustrates the strategic shift from a novice, throttle-heavy approach (Red/200k) to a mature, balanced driving profile (Purple/3M). Note how the mature models maximize 'Consistency' and 'Efficiency' while significantly reducing raw throttle input.*
+*Figure 6: Multi-dimensional analysis of control dynamics. The Radar Chart illustrates the strategic shift from a novice, throttle-heavy approach (Red/200k) to a mature, balanced driving profile (Purple/3M). Note how the mature models maximize 'Consistency' and 'Efficiency' while significantly reducing raw throttle input.*
 
 **Table 3: Evolution of Mean Action Values**
 
@@ -459,14 +475,28 @@ The Control Radar (Figure 5) visualizes the agent's driving "personality" by nor
 * **Efficiency ($\eta$):** Calculated as the ratio of reward to duration ($\eta = \frac{\text{Mean Reward}}{\text{Avg Steps}}$). This metric penalizes "slow and safe" driving. High efficiency indicates the agent maximizes points per second, finding optimal racing lines rather than merely surviving.
 * **Consistency ($C$):** Defined as the inverse of the standard deviation ($C = \frac{1}{\sigma + \epsilon}$). This metric rewards reproducibility; a high consistency score implies the agent's performance is almost identical across all test episodes, minimizing the variance caused by random initialization or noise.
 
-### 5.4 Win Rate
-![alt text](win_rate_B.png)
+
+### 5.4. Win Rate Analysis
+
+To evaluate the true reliability of the agent beyond the accumulated reward, we analyze the **Win Rate**, defined as the percentage of episodes where the agent successfully completes the track achieving a score greater than 900 points.
+
+<div style="text-align: center;">
+    <img src="win_rate_B.png" alt="Win Rate Evolution - Grass Penalty" style="width: 80%;">
+    <p><em>Figure 7: Win Rate progress of Model B.</em></p>
+</div>
+
+The data obtained shows a clear evolution in three phases:
+
+1.  **Learning Phase (0 - 1M steps):** During the first million steps, the agent fails to complete any valid race (**0% Win Rate**). In this stage, the model is still learning vehicle control and associating the grass penalty with the necessity of staying on track.
+2.  **Breakthrough and Peak (1.25M - 2M steps):** From step 1.25M onwards, the agent begins to solve the environment (**23.3%**). Its capability improves rapidly until reaching maximum performance at **2 million steps**, achieving a win rate of **70%**. This point represents the optimal balance between driving aggressiveness and safety.
+3.  **Stabilization (2.5M - 3M steps):** In the final phase, the win rate stabilizes around **53.3%**. Although lower than the maximum peak, it remains a consistent value demonstrating that the agent has internalized a robust driving policy, prioritizing staying on track over risky speeds that could lead to disqualification.
+   
 ### 5.5 Survival vs. Efficiency Analysis
 
 The scatter plot below (Figure 6) visualizes the correlation between **Episode Length** (Survival Time) and **Total Reward**. This projection allows us to distinguish between agents that are simply trying to survive versus those that are optimizing for racing performance.
 
 ![Survival vs Success Scatter Plot](D_scatter_survival_B.png)
-*Figure 6: Scatter plot showing the relationship between steps taken and reward obtained. Note the distinct transition from a linear "survival" trend to a clustered "completion" state.*
+*Figure 8: Scatter plot showing the relationship between steps taken and reward obtained. Note the distinct transition from a linear "survival" trend to a clustered "completion" state.*
 
 The analysis reveals two distinct behavioral phases based on the agent's maturity:
 
@@ -501,11 +531,11 @@ The following graph compares the evolution of the **Mean Reward** over 3 million
 <div style="display: flex; justify-content: space-between;">
     <div style="width: 48%; text-align: center;">
         <img src="learning_curve_A.png" alt="Curva de Aprendizaje - Modelo A" style="width: 100%;">
-        <p><em>Figure A: Learning Curve (Model A - Baseline)</em></p>
+        <p><em>Figure 9: Learning Curve (Model A - Baseline)</em></p>
     </div>
     <div style="width: 48%; text-align: center;">
         <img src="learning_curve_B.png" alt="Curva de Aprendizaje - Modelo B" style="width: 100%;">
-        <p><em>Figure B: Learning Curve (Model B - Grass Penalty)</em></p>
+        <p><em>Figure 10: Learning Curve (Model B - Grass Penalty)</em></p>
     </div>
 </div>
 
@@ -521,11 +551,11 @@ This comparison provides the most striking visual evidence of how the penalty al
 <div style="display: flex; justify-content: space-between;">
     <div style="width: 48%; text-align: center;">
         <img src="D_scatter_survival_A.png" alt="Curva de Aprendizaje - Modelo A" style="width: 100%;">
-        <p><em>Figure A: Scatter Survival (Model A - Baseline)</em></p>
+        <p><em>Figure 11: Scatter Survival (Model A - Baseline)</em></p>
     </div>
     <div style="width: 48%; text-align: center;">
         <img src="D_scatter_survival_B.png" alt="Curva de Aprendizaje - Modelo B" style="width: 100%;">
-        <p><em>Figure B: Scatter Survival (Model B - Grass Penalty)</em></p>
+        <p><em>Figure 12: Scatter Survival (Model B - Grass Penalty)</em></p>
     </div>
 </div>
 
@@ -614,7 +644,7 @@ To conclude the comparison, we present the evolution of the **Win Rate** (percen
 
 <div style="text-align: center;">
     <img src="win_rate_comparison_plot.png" alt="Win Rate Comparison" style="width: 80%;">
-    <p><em>Figure 5.6.3: Comparative Evolution of Win Rate (Success > 900 pts)</em></p>
+    <p><em>Figure 13: Comparative Evolution of Win Rate (Success > 900 pts)</em></p>
 </div>
 The data reveals a critical trend. While both models begin to solve the track around 1.25M steps, the **Baseline model is unstable**. Its performance peaks at 2M steps (46.7%) but then degrades significantly towards the end of training (dropping to 23.3%), likely due to overfitting to "cheating" strategies that eventually fail.
 
