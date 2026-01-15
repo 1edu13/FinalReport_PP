@@ -190,7 +190,7 @@ The architecture follows a standard **Actor-Critic** design sharing a common con
 - **Python 3.10+**
 - **PyTorch:** neural network definition and gradient-based optimization.
 - **NumPy:** numerical utilities and buffer manipulation.
-- **Gymnasium:** environment interface (`CarRacing-v3`).
+- **Gymnasium:** environment interface (`CarRacing-v2`).
 
 
 ### 4.4 Training Loop Implementation Details
@@ -328,7 +328,7 @@ The penalty logic ($P_{grass}$) is implemented as follows:
 
 1.  **RGB Detection:** The wrapper analyzes the original RGB observation to detect "grass" pixels using a specific color filter (Green channel $> 150$, while Red and Blue $< 100$).
 2.  **Penalty Application ($P_{grass}$):** If the ratio of green pixels in the agent's view exceeds **25%** ($green\_ratio > 0.25$), a strictly negative penalty ($-0.8$) is subtracted from the reward at each step:
-    * **If *green_ratio* > 0.25:** The car is considered off-track.
+* **If *green_ratio* > 0.25:** The car is considered off-track.
     * **Penalty Applied:** *P_grass* = **0.8**
 * **Otherwise:**
     * **Penalty:** *P_grass* = **0**
@@ -386,17 +386,8 @@ The following table summarizes the performance evolution across all 8 evaluated 
 | **3.0M** | 816.80 | 197.76 | 53.3% | 730 |
 *Table 1: Evolution of performance metrics. Note the trade-off between peak Win Rate (2.0M) and Stability/Mean Reward (2.5M).*
 
-### 5.2.3 Comparison: Policy A (Standard) vs. Policy B (Grass Penalty)
-
-A critical finding of this project is the impact of the **Grass Penalty** (Policy B) on the learning trajectory compared to the baseline approach (Policy A, trained without strict off-track penalties).
-
-1.  **Delayed Gratification:**
-    * **Policy A (Standard)** tends to achieve higher rewards earlier in training (e.g., around 500k steps) because it learns to "cut corners" through the grass. The standard environment penalty is lenient, allowing the agent to exploit off-track shortcuts to maximize speed.
-    * **Policy B (Grass Penalty)** shows a slower initial start. As seen in the table, rewards at 200k-500k are modest. The agent is strictly punished for touching the green, forcing it to unlearn any "shortcut" behavior and focus on staying strictly on the tarmac.
-
-2.  **Quality of Solution:**
-    * While Policy A may saturate faster, its driving style often appears unrealistic or "illegal" in racing terms.
-    * **Policy B** converges to a **superior qualitative solution**. By 2.0M - 2.5M steps, the agent drives smoothly, stays within the track borders, and exhibits anticipatory braking. The lower standard deviation at 2.5M steps ($\sigma=144.3$) confirms that the strict penalty eventually leads to a more reliable and robust driving policy.
+![Reward Distributions Analysis](reward_distribution.png)
+*Figure 3: Reward Distribution Analysis by Training Step. These histograms visualize the probability density of returns for each model checkpoint. The dashed orange line represents the "solved" threshold (900 points). The progression illustrates a clear shift from low-reward failure modes (200k-500k) to high-variance exploration (1.0M-1.5M) and finally to stable, high-performance behaviors (2.0M-3.0M), visually confirming the standard deviation reduction observed in Table 1.*
 
 ### 5.3 Qualitative Behaviour Analysis
 
