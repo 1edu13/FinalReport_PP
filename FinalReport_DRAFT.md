@@ -299,7 +299,7 @@ Each "step" corresponds to one environment transition in the vectorized setting 
 Initially, the training was conducted using the standard environment configuration (`train.py`) and evaluated using default metrics. However, an in-depth analysis of these preliminary results revealed inconsistent behaviors. While the agents were often able to complete the maximum episode length (1000 steps), visual inspection via video logs showed that the driving was erratic. The agents frequently survived by spinning in circles or drifting off-track without being penalized sufficiently, exploiting the survival reward rather than learning proper lane-keeping.
 
 **Hypothesis:**
-For an autonomous vehicle, safety and road adherence must take precedence over raw velocity. We hypothesized that introducing a strict negative penalty for leaving the designated track would force the agent to learn stability and reduce "cheating" behaviors.
+For an autonomous vehicle, safety and road adherence must take precedence over raw velocity. I hypothesized that introducing a strict negative penalty for leaving the designated track would force the agent to learn stability and reduce "cheating" behaviors.
 
 **Reward Policy Evolution:**
 To test this hypothesis, we formally defined two distinct reward policies used during the experimentation phase.
@@ -344,13 +344,13 @@ For the final comparative analysis, we employed a strict protocol to ensure robu
 * **Key Metrics:** We focus on the **Mean Reward** (to assess the overall quality of driving) and the **Win Rate** (percentage of episodes with reward \(> 900\)) to distinguish between consistently good performance and optimal racing behavior.
 
 
-## 5.2 Impact of Training Duration (Policy B Analysis)
+### 5.2 Impact of Training Duration (Policy B Analysis)
 
 To understand the evolution of the agent's driving capabilities under the **Grass Penalty Policy (Policy B)**, we evaluated 8 distinct checkpoints ranging from **200,000 steps** to **3,000,000 steps**.
 
 This analysis relies on the premise that adding a specific penalty for driving off-track ($r_{grass}$) forces the agent to learn "true" driving physics rather than cutting corners, potentially altering the learning curve compared to standard PPO implementations.
 
-### 5.2.1 Learning Curve Analysis
+#### 5.2.1 Learning Curve Analysis
 
 The training progression follows a clear **S-curve (Sigmoid-like) trajectory**, which can be divided into three distinct phases of learning:
 
@@ -370,7 +370,7 @@ The training progression follows a clear **S-curve (Sigmoid-like) trajectory**, 
     * This indicates that the **2.5M model is more robust**: it raises the "floor" of performance (higher minimum scores), avoiding catastrophic failures, even if it hits the perfect >900 score slightly less often than the aggressive 2.0M model.
     * At **3.0M steps**, performance plateaus, confirming that ~2.5M steps is the optimal training budget for this configuration.
 
-### 5.2.2 Quantitative Metrics Breakdown
+#### 5.2.2 Quantitative Metrics Breakdown
 
 The following table summarizes the performance evolution across all 8 evaluated checkpoints. Data is aggregated from 30 evaluation episodes per model.
 
@@ -389,28 +389,11 @@ The following table summarizes the performance evolution across all 8 evaluated 
 ![Reward Distributions Analysis](reward_distribution.png)
 *Figure 3: Reward Distribution Analysis by Training Step. These histograms visualize the probability density of returns for each model checkpoint.*
 
-### 5.3 Qualitative Behaviour Analysis
-
-Numbers alone do not capture the quality of driving. Therefore, evaluation videos are recorded for each checkpoint.
-
-- **Model A (500K):**
-  - Tends to over-steer and oscillate around the track center.
-  - Frequently leaves the track, leading to early termination and low scores.
-- **Model B (1M):**
-  - Handles most corners reasonably well.
-  - Still exhibits occasional over-corrections and slower recovery after mistakes.
-- **Model C (2M):**
-  - Follows the track smoothly with anticipatory steering.
-  - Maintains higher speed on straights while braking appropriately before sharp turns.
-  - Visually resembles human-like driving and completes most laps without leaving the track.
-
-Selected frames and short clips can be embedded in the presentation to illustrate the progression from unstable to reliable driving.
-
-## 5.4 Stability and Control Signals
+### 5.3 Stability and Control Signals
 
 Analyzing the internal telemetry of the agent reveals how its driving strategy matures over time. We focus on two key aspects: the **stability of the reward** (reliability) and the **evolution of control inputs** (steering, throttle, and brake).
 
-### 5.4.1 Reward Stability Analysis
+#### 5.3.1 Reward Stability Analysis
 
 Stability is measured by the **Standard Deviation ($\sigma$)** of the total reward across evaluation episodes. A lower $\sigma$ indicates a more predictable and robust driver.
 
@@ -423,7 +406,7 @@ Stability is measured by the **Standard Deviation ($\sigma$)** of the total rewa
 * **The "Reliable" Phase (2.5M steps):**
     At **2.5M steps**, we observe a drastic drop in standard deviation to **$\sigma = 144.28$**, the lowest among the high-performing models. This confirms that the agent has consolidated its policy, eliminating most catastrophic failures. Although the 2.0M model achieved a higher peak win rate (70%), it was significantly less stable ($\sigma = 235.34$), making the **2.5M model the superior candidate for deployment** due to its consistency.
 
-### 5.4.2 Control Signals Evolution
+#### 5.3.2 Control Signals Evolution
 
 The evolution of the action distribution (Steering, Gas, Brake) reveals a transition from rudimentary "bang-bang" control to a sophisticated understanding of vehicle dynamics and momentum conservation.
 
@@ -445,8 +428,7 @@ The evolution of the action distribution (Steering, Gas, Brake) reveals a transi
 
 *Note: In the PPO continuous action space, negative output values correspond to a "do nothing" action (0.0) after clipping. A strongly negative mean indicates the agent is confident in **not** activating that pedal.*
 
-#### Detailed Analysis of Control Strategies:
-
+**Detailed Analysis of Control Strategies:**
 1.  **Throttle (Momentum Conservation):**
     * **Novice Phase (200k):** The model exhibits a positive mean throttle (**0.372**), implying a strategy of constant acceleration. This correlates with the high crash rate; the agent has not yet learned the relationship between excessive speed and loss of traction in corners.
     * **Expert Phase (2.5M+):** The mean throttle drops significantly into negative territory. This indicates that the converged agent has learned to **"coast"** (release the accelerator). By utilizing the car's momentum, the agent maintains high speeds with minimal energy expenditure, applying power only to exit corners or correct slides. This is a hallmark of professional racing efficiency.
@@ -462,7 +444,7 @@ The evolution of the action distribution (Steering, Gas, Brake) reveals a transi
         1.  **Constantly micro-correcting** its trajectory to stay on the optimal racing line while driving at maximum velocity.
         2.  **Rapid Recovery:** The high variance reflects the agent's ability to react instantly to traction loss or touching the grass, snapping the car back to safety rather than drifting off slowly like the novice models.
 
-### 5.4.3 Visual Analytics Methodology
+#### 5.3.3 Visual Analytics Methodology
 
 To ensure a rigorous interpretation of the graphical data presented in Figure 4 (Boxplots) and Figure 5 (Radar Chart), we define the calculated metrics and statistical elements as follows, based on the evaluation of 30 episodes per model.
 
@@ -477,76 +459,189 @@ The Control Radar (Figure 5) visualizes the agent's driving "personality" by nor
 * **Efficiency ($\eta$):** Calculated as the ratio of reward to duration ($\eta = \frac{\text{Mean Reward}}{\text{Avg Steps}}$). This metric penalizes "slow and safe" driving. High efficiency indicates the agent maximizes points per second, finding optimal racing lines rather than merely surviving.
 * **Consistency ($C$):** Defined as the inverse of the standard deviation ($C = \frac{1}{\sigma + \epsilon}$). This metric rewards reproducibility; a high consistency score implies the agent's performance is almost identical across all test episodes, minimizing the variance caused by random initialization or noise.
 
-### 5.5 Limitations
+### 5.4 Win Rate
+![alt text](win_rate_B.png)
+### 5.5 Survival vs. Efficiency Analysis
 
-Despite the positive results, the evaluation reveals some limitations:
+The scatter plot below (Figure 6) visualizes the correlation between **Episode Length** (Survival Time) and **Total Reward**. This projection allows us to distinguish between agents that are simply trying to survive versus those that are optimizing for racing performance.
 
-- Performance still degrades on extremely sharp or unusual track configurations.
-- The agent is trained and tested in a single simulated environment; transfer to real-world conditions is not addressed.
-- All evaluations are done under similar observation and reward settings; robustness to sensor noise or modified rewards is not yet studied.
+![Survival vs Success Scatter Plot](D_scatter_survival_B.png)
+*Figure 6: Scatter plot showing the relationship between steps taken and reward obtained. Note the distinct transition from a linear "survival" trend to a clustered "completion" state.*
 
-These points motivate future work, such as domain randomization, curriculum learning, or alternative architectures.
+The analysis reveals two distinct behavioral phases based on the agent's maturity:
 
-### 5.6 Generalization vs. Memorization: Random Seeds vs Fixed Track
+#### 1. The Survival Phase (Linear Correlation)
+For the less trained models (typically under 1M steps), we observe a strict **linear relationship** between steps and reward.
+* **Observation:** These models (such as 200k and 500k) rarely exceed **400 steps** per episode.
+* **Mechanism:** In this phase, the agent is essentially fighting to stay "alive." Since the reward function grants points for every unique track tile visited, every additional frame the car stays on the road adds to the score. Therefore, the reward is purely a function of **distance traveled before failure**.
+* **Failure Mode:** As soon as the agent behaves erratically or drives off-track (touching the grass), the episode terminates shortly after. This explains the linear drop-off: they simply cannot sustain the drive long enough to reach the high-reward zone.
 
-To study whether the agent truly *learns to drive* or merely *memorizes a specific track*, two PPO agents with identical architectures and hyperparameters are trained:
+#### 2. The Efficiency Frontier (The "Horizontal" Shift)
+As we cross the **600-step barrier**, the behavior shifts dramatically. We observe a dense cluster of points forming a **quasi-horizontal line** in the high-reward region (Reward > 850).
+* **Observation:** This region is dominated by the mature models (**1.5M, 2M, 2.5M, 3M**).
+* **Mechanism:** The plateau occurs because the episode terminates *successfully* upon completing the full lap. Once the track is finished, the maximum potential reward is capped (around 900-1000 points).
+* **Implication for Efficiency:** In this cluster, the variation along the X-axis (Steps) no longer indicates "survival time" but rather **speed**.
+    * A model that finishes the lap in **fewer steps** (shifting left on the horizontal line) is driving faster.
+    * This confirms that the advanced models (2.5M - 3M) have not only solved the stability problem but are actively optimizing for **efficiency**, completing the same task in less time compared to the intermediate models.
 
-- **Generalist Agent (Random Seeds):**
-  - Trained on procedurally generated tracks with a different random seed at every episode.
-  - Objective: learn generic driving skills (cornering, speed control, recovery) that transfer across layouts.
+### 5.6 Strategy Comparison: Standard Training vs. Grass Penalty
 
-- **Specialist Agent (Fixed Seed):**
-  - Trained on a single, fixed track layout using a constant environment seed.
-  - Objective: intentionally encourage memorization of that specific circuit.
+In this final section, we contrast the performance of models trained with the baseline strategy (`train.py`) against those trained with the "Grass Penalty" strategy (`train2.py`). The objective is to evaluate whether explicitly penalizing going off-track improves robustness and driving quality.
 
-Both agents are trained for the same number of environment steps (e.g. **1.0M** or **2.0M** steps), so that differences in performance can be attributed to the training distribution rather than to training budget.
+#### 5.6.1 Definition of Strategies
+We trained two sets of agents under the same hyperparameter conditions (PPO), varying only in their interaction with the environment. As detailed in **Section 5.1.2**, where the reward engineering is explained in depth, we compared:
 
-#### 5.6.1 Evaluation Protocol
+1.  **Standard Strategy (Baseline):** The agent operates with the default reward structure of the `CarRacing-v2` environment, without modifications.
+2.  **Penalty Strategy (Grass Penalty):** The agent is trained using the `GrassPenaltyWrapper` (see **Section 5.1.2**). This configuration actively penalizes the agent for driving on the grass and forces early termination if the car remains off-track, prioritizing precision over exploration.
 
-To compare *generalization* and *memorization*, each agent is evaluated under two conditions:
 
-1. **Random-track evaluation (unseen layouts):**
-   - Environment seeds are sampled randomly at every episode.
-   - Measures how well the policy adapts to new tracks it has never seen before.
+#### 5.6.2 Learning Curve Analysis
 
-2. **Fixed-track evaluation (memorized layout):**
-   - The environment is reset with the **same seed used to train the Specialist Agent**.
-   - Measures how strongly each policy overfits to that single circuit.
+The following graph compares the evolution of the **Mean Reward** over 3 million training steps for both strategies.
+<div style="display: flex; justify-content: space-between;">
+    <div style="width: 48%; text-align: center;">
+        <img src="learning_curve_A.png" alt="Curva de Aprendizaje - Modelo A" style="width: 100%;">
+        <p><em>Figure A: Learning Curve (Model A - Baseline)</em></p>
+    </div>
+    <div style="width: 48%; text-align: center;">
+        <img src="learning_curve_B.png" alt="Curva de Aprendizaje - Modelo B" style="width: 100%;">
+        <p><em>Figure B: Learning Curve (Model B - Grass Penalty)</em></p>
+    </div>
+</div>
 
-For each condition and each agent we run **N evaluation episodes** (e.g. \(N = 20\)) with deterministic actions (policy mean, no exploration noise) and record:
+**Data Interpretation:**
+* **Intrinsic Difficulty & Reward Scaling:** It is crucial to note that the **Grass Penalty** model operates under a stricter reward function.  Therefore, obtaining a high reward is significantly harder in the penalized environment; the agent must drive "cleanly" to match the score of a baseline agent that might be cutting corners.
+* **Learning Onset:** Consequently, the *Grass Penalty* model shows lower initial performance (Mean Reward ~91 at 200k steps) compared to the *Baseline* (~207). The agent is not only learning to drive but also struggling against negative feedback and early termination penalties.
+* **Convergence and Superiority:** Despite this handicap, the penalized model recovers rapidly. By the end of training (2.5M - 3M steps), it surpasses the baseline, maintaining a mean reward consistently above **800** points. This indicates that the policy learned under stricter constraints is ultimately more efficient and robust than the one learned in a permissible environment.
 
-- Episode total reward
-- Episode length
-- Win rate (percentage of episodes with reward \(> 900\))
+#### 5.6.3 Survival and Efficiency Analysis (Scatter Survival)
 
-#### 5.6.2 Quantitative Results
+This comparison provides the most striking visual evidence of how the penalty alters the learning process. The following graphs plot the relationship between the duration of the episode (Steps) and the total reward obtained.
 
-The following table summarizes the expected behaviour (values to be filled in with experimental results):
+<div style="display: flex; justify-content: space-between;">
+    <div style="width: 48%; text-align: center;">
+        <img src="D_scatter_survival_A.png" alt="Curva de Aprendizaje - Modelo A" style="width: 100%;">
+        <p><em>Figure A: Scatter Survival (Model A - Baseline)</em></p>
+    </div>
+    <div style="width: 48%; text-align: center;">
+        <img src="D_scatter_survival_B.png" alt="Curva de Aprendizaje - Modelo B" style="width: 100%;">
+        <p><em>Figure B: Scatter Survival (Model B - Grass Penalty)</em></p>
+    </div>
+</div>
 
-| Agent / Evaluation seed      | Mean reward | Std. dev. | Win rate (> 900) |
-|----------------------------- |-----------:|----------:|-----------------:|
-| **Generalist – Random tracks** | xxx.x      |  xxx.x    |        xx.x %    |
-| **Generalist – Fixed track**   | xxx.x      |  xxx.x    |        xx.x %    |
-| **Specialist – Random tracks** | xxx.x      |  xxx.x    |        xx.x %    |
-| **Specialist – Fixed track**   | xxx.x      |  xxx.x    |        xx.x %    |
+**Behavior Analysis:**
+* **Early Termination vs. Timeout:** A critical difference observed in the data is the duration of failed episodes.
+    * In the **Baseline** model, immature agents (e.g., 200k) tend to exhaust the maximum time (Avg Steps ~1000), suggesting the car gets stuck driving in circles or spinning without completing the track.
+    * In the **Grass Penalty** model, immature agents have a very low average duration (~242 steps). The *wrapper* cuts the episode as soon as the agent fails, accelerating the feedback loop: the agent quickly learns that "going off-track = game over".
+* **Win Rate:** The final impact of this strategy is vastly superior reliability. The best penalized model achieves a win rate of **70%**, while the best standard model barely reaches **46.6%**. The "Grass Penalty" agent learns to complete the circuit validly much more frequently.
 
-#### 5.6.3 Discussion
+* **Survival vs. Termination (The 1000-Step Wall):**
+    There is a fundamental difference in the "failure mode" of the agents.
+    * In **Figure A (Baseline)**, we observe a high density of points reaching the limit of **1000 steps** with low rewards. This indicates that the agent frequently "survives" the entire episode driving on the grass or looping without making progress. Since the environment does not terminate these episodes, the agent wastes training time accumulating negligible rewards.
+    * In **Figure B (Grass Penalty)**, this cluster of "long failures" disappears. The penalty forces early termination when the agent leaves the track, clearing the graph of useless long episodes and allowing the agent to restart and learn faster.
 
-The expected pattern is:
+* **Consistency in Reward Dynamics:**
+    Despite the difference in survival, the **linear trend** (the slope of the points) remains remarkably similar between the two models for the successful episodes. This suggests that the core mechanism of accumulating reward (speed vs. distance covered) behaves similarly in terms of "points per step" once the car is on track.
 
-- On the **fixed track**, the Specialist Agent should achieve very high scores and win rates, sometimes outperforming the Generalist Agent, as it has effectively memorized that layout.
-- On **random tracks**, the Specialist Agent is likely to degrade significantly, with:
-  - Lower mean reward,
-  - Higher variance,
-  - Lower win rate,
-  indicating poor robustness to unseen circuits.
-- The **Generalist Agent** should maintain more stable performance across both evaluation conditions, with smaller gaps between fixed and random tracks, which is a strong indication of *true generalization* rather than memorization.
+* **Implications for Control:**
+    However, this quantitative similarity in the reward/step ratio masks a qualitative difference in *how* that reward is achieved. As we will analyze in the next section (**5.6.4**), while the reward accumulation rate appears similar, the **control behavior** required to maintain that rate without touching the grass (Model B) is  different from the looser driving style of Model A. Furthermore, these substantial behavioral differences are clearly observable in the video recordings, a visual analysis of which will be detailed in **Section 5.6.5**.
 
-This experiment illustrates a classical trade-off:
-- Training on **diverse seeds** leads to more robust but slightly slower-learning agents.
-- Training on a **fixed seed** encourages rapid improvement on that specific scenario at the cost of poor out-of-distribution performance.
+#### 5.6.4 Control Analysis: Steering, Throttle, and Brake
 
-In the context of autonomous driving, the Generalist Agent is clearly preferable, since real roads are never identical to the training track.
+Finally, we analyze the specific control actions (Steering, Gas, Brake) to understand the behavioral profile of each agent.
+
+| Metric (3M Model) | Baseline | Grass Penalty |
+| :--- | :---: | :---: |
+| **Steering Std Dev** | 1.01 | **1.68** |
+| **Throttle Mean** | **0.38** | -0.52 |
+| **Brake Mean** | **-0.50** | -1.39 |
+| **Win Rate** | 23.3% | **53.3%** |
+
+*Note: In the PPO continuous action space, values > 0 activate the pedals. A higher mean implies more frequent and intense usage.*
+
+**Analysis:**
+
+1.  **Steering:**
+    The penalized model presents a significantly higher standard deviation in steering (**1.68** vs 1.01). This indicates a **reactive and corrective** driving style.
+    * **Stricter Racing Line:** This difference is also fundamentally due to the path taken. The *Baseline* model often "straightens" curves by cutting through the grass, requiring less steering input but failing the objective.
+    * **Active Control:** In contrast, the *Grass Penalty* agent is forced to follow the track geometry strictly. It cannot shortcut; therefore, it must actively manipulate the steering wheel more to navigate the curves properly while staying on the gray asphalt.
+
+2.  **Throttle and Brake:**
+    The **Baseline** model exhibits much higher usage of both the Accelerator (**0.38**) and Brake (**-0.50**) compared to the penalized model (which has lower or negative means, indicating less activation).
+    * **Interpretation:** The Baseline agent drives more aggressively and faster, but this behavior is inefficient. The higher pedal usage is largely a symptom of its inability to stay on track; it frequently needs to brake hard to stop spinning or accelerate aggressively to rejoin the asphalt from the grass.
+    * **Efficiency:** The *Grass Penalty* agent, by maintaining a valid racing line, preserves momentum better. It adopts a smoother throttle control (coasting more often), avoiding the stop-and-go patterns typical of an agent recovering from off-track excursions.
+
+
+#### 5.6.5 Visual Behavioral Analysis (Video Case Studies)
+
+To fully comprehend the qualitative differences discussed in the previous sections, **we strongly recommend viewing the attached video recordings**. The data metrics alone cannot fully convey the drastic difference in driving "personality" between the two models.
+
+Below, we analyze two specific instances that perfectly encapsulate the behavioral divergence between Model A (Baseline) and Model B (Grass Penalty).
+
+##### Case Study 1: Intermediate Training (2.5M Steps - Episode 025)
+
+* **Model A (Baseline - `eval_model_2500k_ep025`):**
+    The behavior is erratic. After an initial contact with the grass, the agent loses stability and enters a spin. Notably, when rejoining the track, it does so **in the opposite direction** or in a completely uncontrolled manner. Despite this severe error, the agent continues to operate until it encounters a section of tight curves, where it loses control again. This illustrates a lack of understanding of track constraints; the agent "survives" but does not "drive".
+
+* **Model B (Grass Penalty - `eval_model_2500k_ep025`):**
+    In stark contrast, the penalized model demonstrates precision. It completes the lap successfully, negotiating all curves correctly. Instances of touching the grass are rare and much less abrupt. Crucially, when it does deviate slightly, the **recovery is immediate and controlled**, rejoining the asphalt quickly and maintaining the correct racing line. This aligns with the higher *Steering Std Dev* observed in data, reflecting active correction.
+
+##### Case Study 2: Final Model (3.0M Steps - Episode 000)
+
+* **Model A (Baseline - `eval_model_3000k_ep000`):**
+    This video highlights the "cheating" behavior permitted by the baseline reward.
+    1.  **Corner Cutting:** In the first tight curve, the agent clearly shortcuts through the grass to maintain speed.
+    2.  **Excessive Aggression:** In the fast curve section, the agent maintains excessive speed, leading to an abrupt loss of control and a spin.
+    3.  **Inefficient Survival:** Although it recovers and continues, it eventually drifts back onto the grass. It fails to complete the lap, with the episode terminating due to the **1000-step timeout**. The agent spent significant time alive but failed to achieve the objective.
+
+* **Model B (Grass Penalty - `eval_model_3000k_ep000`):**
+    The behavior here is defined by **caution and consistency**. The agent drives noticeably slower (less aggressive throttle usage, as seen in Section 5.6.4), but follows the track geometry perfectly. It does not cut corners. It successfully completes the lap just before the 1000-step limit. While less "flashy" or fast in straight lines, it is reliable, prioritizing staying *on* the road over raw speed.
+
+#### 5.6.6. Comparative Win Rate Analysis
+
+To conclude the comparison, we present the evolution of the **Win Rate** (percentage of episodes where the agent scores > 900 points) across the entire training history. This metric is the ultimate indicator of success.
+
+| Checkpoint (Steps) | Baseline Win Rate (%) | Grass Penalty Win Rate (%) |
+| :--- | :---: | :---: |
+| **200k** | 0.0% | 0.0% |
+| **500k** | 0.0% | 0.0% |
+| **1000k** | 0.0% | 0.0% |
+| **1250k** | 10.0% | **23.3%** |
+| **1500k** | 33.3% | 33.3% |
+| **2000k** | 46.7% | **70.0%** |
+| **2500k** | 36.7% | **53.3%** |
+| **3000k** | 23.3% | **53.3%** |
+
+<div style="text-align: center;">
+    <img src="win_rate_comparison_plot.png" alt="Win Rate Comparison" style="width: 80%;">
+    <p><em>Figure 5.6.3: Comparative Evolution of Win Rate (Success > 900 pts)</em></p>
+</div>
+The data reveals a critical trend. While both models begin to solve the track around 1.25M steps, the **Baseline model is unstable**. Its performance peaks at 2M steps (46.7%) but then degrades significantly towards the end of training (dropping to 23.3%), likely due to overfitting to "cheating" strategies that eventually fail.
+
+In contrast, the **Grass Penalty model is far more robust**. Once it learns to drive (post-1.5M), it consistently maintains a higher win rate, peaking at **70%** and remaining above 50% even in the final stages. This confirms that penalizing off-track behavior leads to a policy that is not only safer but also fundamentally more successful at completing the race. **As can be observed from the data, Model B performs better.**
+
+#### 5.6.7. Final Conclusion: Validation of the "Grass Penalty" Hypothesis
+
+The comparative analysis allows us to confirm that **the initial hypothesis has been successfully validated**: introducing an explicit penalty for leaving the track (`GrassPenaltyWrapper`) produces a significantly more robust, reliable, and safer autonomous driving agent than the standard training strategy.
+
+This conclusion is justified by the convergence of quantitative metrics and behavioral observations detailed throughout Section 5.6:
+
+1.  **Superior Reliability (Win Rate):**
+    The most definitive metric is the success rate. The **Grass Penalty** model achieved a peak win rate of **70%**, whereas the **Baseline** model stalled at **46.7%** and demonstrated severe instability, degrading to 23.3% in the final stages. This proves that the penalized agent is not just "luckier" but possesses a fundamentally more consistent driving policy.
+
+2.  **Elimination of "Reward Hacking":**
+    The analysis in **Section 5.6.3** revealed that the Baseline agent often maximizes its reward by exploiting the environment—cutting corners through the grass or "surviving" for 1000 steps without completing the lap. By enforcing early termination and negative rewards for off-track behavior (as defined in `utils2.py`), the Grass Penalty model was forced to unlearn these cheating strategies. This resulted in a **stricter racing line** and higher steering engagement (**1.68** std dev vs **1.01**), indicating active path correction rather than passive survival.
+
+3.  **Enhanced Safety and Control:**
+    The control analysis (**Section 5.6.4**) demonstrated that the penalized agent operates with greater efficiency. While the Baseline model relies on erratic high-speed maneuvers (high throttle/brake usage) and frequent recoveries from spins, the Grass Penalty model prioritizes **stability**. It uses the throttle and brake less aggressively, maintaining momentum through valid racing lines rather than stop-and-go corrections.
+
+**Summary:**
+While the "Grass Penalty" strategy increases the initial difficulty of the learning task, it effectively solves the **credit assignment problem**. It ensures that high rewards are only accessible through legitimate driving, leading to a model that is arguably the "better driver" in every meaningful capacity—safer, more consistent, and strictly adherent to track boundaries.
+
+
+
+
+
 
 ---
 
